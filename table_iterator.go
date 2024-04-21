@@ -405,6 +405,9 @@ func (iter *TablesIterator) Valid() bool {
 }
 
 func (iter *TablesIterator) Close() error {
+	if iter == nil {
+		return nil
+	}
 	for _, table := range iter.tables {
 		if err := table.DecrRef(); err != nil {
 			return err
@@ -637,7 +640,13 @@ func (m *TablesMergeIterator) Value() EValue {
 // Close all the iterators
 func (m *TablesMergeIterator) Close() error {
 	lerr := m.left.iter.Close()
-	rerr := m.right.iter.Close()
+
+	var rerr error
+
+	if m.right.iter != nil {
+		rerr = m.right.iter.Close()
+	}
+
 	if lerr != nil {
 		return Wrap(lerr, "TablesMergeIterator left")
 	}

@@ -3,6 +3,8 @@ package equinox
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"equinox/data_type"
 	"equinox/internel"
 	"fmt"
 	"io/ioutil"
@@ -19,6 +21,8 @@ import (
 	"errors"
 )
 
+const threshold = 1024 * 1024
+
 // DB interface is useful when test
 type DB interface {
 	Put(options *WriteOptions, key, value []byte) error
@@ -31,6 +35,7 @@ type DB interface {
 	GetExtend(options *ReadOptions, key []byte) (value *EValue, err error)
 	GetOption() Options
 	Close() error
+	TSWrite(options *WriteOptions, points []data_type.TSEntry) error
 }
 
 // closers for those goroutines that need run backgroud when DB opened.
@@ -60,9 +65,12 @@ type DBImpl struct {
 	writeCh   chan *writeBatchInternel
 	flushCh   chan *memTable
 
-	blockWrites int32
-	isClosed    uint32    // atomic
-	closeOnce   sync.Once // for close db just once
+	blockWrites  int32
+	isClosed     uint32    // atomic
+	closeOnce    sync.Once // for close db just once
+	tsEntryCache map[string][]byte
+	keyIndex     map[string]int
+	walTime      int
 }
 
 const (
@@ -138,6 +146,8 @@ func Open(options Options) (DB, error) {
 		dirLockGuard:  dirLockGuard,
 		valueDirGuard: valueDirLockGuard,
 		snapshots:     newSnapshotList(),
+		tsEntryCache:  make(map[string][]byte),
+		keyIndex:      make(map[string]int),
 	}
 
 	// Cleanup all the goroutines started by badger in case of an error.
@@ -330,6 +340,38 @@ func (db *DBImpl) Write(options *WriteOptions, batch *WriteBatch) error {
 		return wb.Wait()
 	}
 
+	return nil
+}
+
+func (db *DBImpl) TSWrite(options *WriteOptions, points []data_type.TSEntry) error {
+	if len(points) == 0 {
+		return ErrEmptyKey
+	}
+
+	wb := NewWriteBatch(db)
+
+	for _, point := range points {
+		key := point.KeyStr()
+		if options.Separate {
+			if _, exists := db.tsEntryCache[key]; !exists {
+				db.tsEntryCache[key] = []byte{}
+			}
+			db.tsEntryCache[key] = append(db.tsEntryCache[key], point.GetBytes()...)
+			if len(db.tsEntryCache[key]) > threshold {
+				intBytes := make([]byte, 8)
+				binary.BigEndian.PutUint64(intBytes, uint64(db.keyIndex[key]))
+				db.keyIndex[key]++
+				wb.Put(append(point.Key(), intBytes...), db.tsEntryCache[key])
+				db.tsEntryCache[key] = db.tsEntryCache[key][:0]
+			}
+		} else {
+			db.keyIndex[key]++
+			wb.Put(append(point.Key(), []byte(strconv.Itoa(db.keyIndex[key]))...), point.GetBytes())
+		}
+	}
+	if wb.sz != 0 {
+		return db.Write(options, wb)
+	}
 	return nil
 }
 

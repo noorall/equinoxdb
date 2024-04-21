@@ -647,7 +647,7 @@ func (ls *levels) buildNewTables(levelId int, ci compactInfo) ([]*Table, func() 
 		if levelId == 0 {
 			// level0 should iterate reversed (from newest to oldest)
 			for i := len(from) - 1; i >= 0; i-- {
-				iters = append(iters, from[i].NewIterator(false))
+				iters = append(iters, from[i].NewIterator(true))
 			}
 		} else {
 			iters = append(iters, from[0].NewIterator(false))

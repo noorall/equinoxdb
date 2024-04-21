@@ -21,7 +21,7 @@ var (
 )
 
 const (
-	maxValueThreshold = (1 << 20) // 1 MB
+	maxValueThreshold = 1024 * 1024 // 1 MB
 )
 
 type Comparator = func([]byte, []byte) int
@@ -74,7 +74,8 @@ type ReadOptions struct {
 }
 
 type WriteOptions struct {
-	Sync bool
+	Sync     bool
+	Separate bool
 }
 
 func DefaultOptions(dir string) Options {
@@ -82,14 +83,14 @@ func DefaultOptions(dir string) Options {
 		Dir:         dir,
 		ValueLogDir: dir,
 
-		MemTableSize:        64 << 20, // 64 MB
+		MemTableSize:        25 << 20, // 64 MB
 		BaseTableSize:       2 << 20,  // 2 MB
 		BaseLevelSize:       10 << 20, // 10 MB
 		LevelSizeMultiplier: 10,
 		TableSizeMultiplier: 2,
 		MaxLevels:           7,
 
-		NumCompactors:           4,
+		NumCompactors:           2,
 		NumLevelZeroTables:      5,
 		NumLevelZeroTablesStall: 15,
 		NumMemtables:            5,

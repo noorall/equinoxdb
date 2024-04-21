@@ -25,7 +25,7 @@ func getKeyRange(tables ...*Table) keyRange {
 
 	comparator := tables[0].opt.comparator
 	smallest := tables[0].Smallest()
-	biggest := tables[1].Biggest()
+	biggest := tables[0].Biggest()
 
 	for _, table := range tables {
 		if comparator(smallest, table.Smallest()) > 0 {
