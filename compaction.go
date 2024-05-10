@@ -69,7 +69,7 @@ func (r keyRange) IsOverlapsWith(other keyRange) bool {
 		return true
 	}
 
-	if r.comparator(r.left, other.right) < 0 {
+	if r.comparator(r.left, other.right) > 0 {
 		return false
 	}
 

@@ -164,7 +164,7 @@ func testString() {
 
 	//testWriteString(40960*2, 1, true, true, data256)
 
-	testWriteString(40960*2, 1, false, true, data256)
+	testWriteString(40960, 1, false, true, data256)
 
 	return
 	testWriteString(16384, 1, true, true, data64)

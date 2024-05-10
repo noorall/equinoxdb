@@ -6,7 +6,6 @@ import (
 	"sort"
 	"sync"
 
-	"errors"
 	"fmt"
 )
 
@@ -118,10 +117,11 @@ func (l *level) Delete(delTables []*Table) error {
 // Replace will replace tables in delTables with addTables
 func (l *level) Replace(delTables, addTables []*Table) error {
 	if l.id == 0 {
-		return errors.New("level0 unsuppport Replace.")
+		l.opts.Logger.Debugf("replace a l0 level")
 	}
 
 	l.Lock()
+	defer l.Unlock()
 	// first delete the tables in delTables
 	delMap := map[uint64]struct{}{}
 	for _, table := range delTables {
@@ -152,8 +152,6 @@ func (l *level) Replace(delTables, addTables []*Table) error {
 			return l.opts.comparator(l.tables[i].Smallest(), l.tables[j].Smallest()) < 0
 		})
 	}
-
-	l.Unlock()
 
 	return decrRefs(delTables)
 }

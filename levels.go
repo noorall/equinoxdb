@@ -295,7 +295,7 @@ func (ls *levels) getDynamicLevelSize() dynamicLevelSize {
 	}
 
 	dbSize := ls.LastLevel().TotalSize()
-	for i := len(ls.ls) - 1; i > 0; i-- {
+	for i := len(ls.ls) - 1; i >= 0; i-- {
 		target := dbSize
 		if target < ls.opts.BaseLevelSize {
 			target = ls.opts.BaseLevelSize
@@ -310,7 +310,7 @@ func (ls *levels) getDynamicLevelSize() dynamicLevelSize {
 	}
 
 	tableSize := ls.opts.BaseTableSize
-	for i := 0; i < len(ls.ls)-1; i++ {
+	for i := 0; i < len(ls.ls); i++ {
 		if i == 0 {
 			// level0 not include in dynamic size
 			d.fileSize[i] = int64(ls.opts.MemTableSize)
@@ -647,13 +647,16 @@ func (ls *levels) buildNewTables(levelId int, ci compactInfo) ([]*Table, func() 
 		if levelId == 0 {
 			// level0 should iterate reversed (from newest to oldest)
 			for i := len(from) - 1; i >= 0; i-- {
-				iters = append(iters, from[i].NewIterator(true))
+				iters = append(iters, from[i].NewIterator(false))
 			}
 		} else {
 			iters = append(iters, from[0].NewIterator(false))
 		}
 
-		return append(iters, NewTablesIterator(valid, false))
+		if valid != nil {
+			iters = append(iters, NewTablesIterator(valid, false))
+		}
+		return iters
 	}
 
 	res := make(chan *Table, 3)
@@ -823,7 +826,7 @@ func (ls *levels) subcompact(it Iterator, kr keyRange, ci compactInfo,
 			}
 
 			if !SameKey(curr, lastKey) {
-				if len(kr.right) > 0 && ls.opts.comparator(curr, kr.right) >= 0 {
+				if kr.right != nil && len(kr.right) > 0 && ls.opts.comparator(curr, kr.right) >= 0 {
 					// no more record in the keyRange that need to compact
 					break
 				}

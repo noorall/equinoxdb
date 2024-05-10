@@ -22,7 +22,8 @@ type TableIterator struct {
 func (t *Table) NewIterator(reverse bool) *TableIterator {
 	t.IncrRef()
 
-	return &TableIterator{table: t,
+	return &TableIterator{
+		table:      t,
 		reverse:    reverse,
 		comparator: t.opt.comparator,
 		checksum:   true,

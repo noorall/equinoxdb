@@ -106,7 +106,7 @@ func DefaultOptions(dir string) Options {
 		ZSTDCompressionLevel: 1,
 
 		comparator:          CompareKeys,
-		Logger:              internel.DefaultLogger(internel.INFO),
+		Logger:              internel.DefaultLogger(internel.DEBUG),
 		VerifyTableChecksum: false,
 	}
 }
