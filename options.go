@@ -83,14 +83,14 @@ func DefaultOptions(dir string) Options {
 		Dir:         dir,
 		ValueLogDir: dir,
 
-		MemTableSize:        25 << 20, // 64 MB
-		BaseTableSize:       2 << 20,  // 2 MB
-		BaseLevelSize:       10 << 20, // 10 MB
+		MemTableSize:        64 << 20,  // 64 MB
+		BaseTableSize:       64 << 20,  // 2 MB
+		BaseLevelSize:       256 << 20, // 10 MB
 		LevelSizeMultiplier: 10,
-		TableSizeMultiplier: 2,
-		MaxLevels:           7,
+		TableSizeMultiplier: 4,
+		MaxLevels:           4,
 
-		NumCompactors:           2,
+		NumCompactors:           4,
 		NumLevelZeroTables:      5,
 		NumLevelZeroTablesStall: 15,
 		NumMemtables:            5,
@@ -106,7 +106,7 @@ func DefaultOptions(dir string) Options {
 		ZSTDCompressionLevel: 1,
 
 		comparator:          CompareKeys,
-		Logger:              internel.DefaultLogger(internel.DEBUG),
+		Logger:              internel.DefaultLogger(internel.INFO),
 		VerifyTableChecksum: false,
 	}
 }

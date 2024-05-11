@@ -949,13 +949,13 @@ func (ls *levels) fillTablesL0(ci *compactInfo) bool {
 	if ls.fillTablesL0ToBase(ci) {
 		return true
 	}
-
-	return ls.fillTablesL0ToL0(ci)
+	return false
+	//return ls.fillTablesL0ToL0(ci)
 }
 
 func (ls *levels) fillTablesL0ToBase(ci *compactInfo) bool {
 	if ci.next.id == 0 {
-		panic("Base level can't be zero.")
+		return false
 	}
 
 	if ci.cp.adjusted > 0.0 && ci.cp.adjusted < 1.0 {

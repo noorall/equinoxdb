@@ -89,7 +89,7 @@ func removeDir(dir string) {
 }
 
 func getTestDB() (equinox.DB, func()) {
-	dir, _ := ioutil.TempDir("", "golbat-test")
+	dir, _ := ioutil.TempDir("/Users/noorall/GolandProjects/equinox/benchmark/write/db", "golbat-test")
 	options := equinox.DefaultOptions(dir)
 	db, _ := equinox.Open(options)
 
@@ -132,16 +132,18 @@ func testWriteString(dataSize int, batchSize int, Separate bool, Sync bool, val 
 	time.Sleep(5 * time.Second)
 	start := time.Now()
 	defer fun()
-	point := data_type.New([]byte("bool_test"), data_type.STRING)
+	points := make([]data_type.TSEntry, batchSize)
 	writeOptions := &equinox.WriteOptions{Separate: Separate, Sync: Sync}
 	for i := 0; i < dataSize; i++ {
+		point := data_type.New([]byte("bool_test"), data_type.STRING)
 		point.Put(uint64(i), val)
-		if point.Count() >= batchSize {
-			err := db.TSWrite(writeOptions, []data_type.TSEntry{point.DeepCopy()})
+		points = append(points, point.DeepCopy())
+		if len(points) >= batchSize {
+			err := db.TSWrite(writeOptions, points)
 			if err != nil {
 				fmt.Errorf("error")
 			}
-			point.Clean()
+			points = make([]data_type.TSEntry, batchSize)
 		}
 	}
 	duration := time.Since(start)
@@ -162,22 +164,22 @@ func testString() {
 	data256b, _ := generateRandomChars("256b")
 	data64b, _ := generateRandomChars("64b")
 
-	//testWriteString(40960*2, 1, true, true, data256)
+	testWriteString(40960, 1, true, true, data256)
+	testWriteString(40960*4, 1, true, true, data64)
+	testWriteString(40960*16, 1, true, true, data16)
+	testWriteString(40960*64, 1, true, true, data4)
+	testWriteString(40960*256, 1, true, true, data1)
+	testWriteString(40960*1024, 1, true, true, data256b)
+	testWriteString(40960*1024*4, 1, true, true, data64b)
 
-	testWriteString(40960, 1, false, true, data256)
-
-	return
-	testWriteString(16384, 1, true, true, data64)
-
-	testWriteString(65536, 1, true, true, data16)
-
-	testWriteString(262144, 1, true, true, data4)
-
-	testWriteString(1048576, 1, true, true, data1)
-
-	testWriteString(4194304, 1, true, true, data256b)
-
-	testWriteString(16777216, 1, true, true, data64b)
+	testWriteString(40960, 4, false, true, data256)
+	testWriteString(40960*4, 16, false, true, data64)
+	testWriteString(40960*16, 1024/16, false, true, data16)
+	testWriteString(40960*64, 1024/4, false, true, data4)
+	//
+	testWriteString(40960*256, 1024, false, true, data1)
+	testWriteString(40960*1024, 1024*4, false, true, data256b)
+	testWriteString(40960*1024*4, 1024*16, false, true, data64b)
 }
 
 func main() {
