@@ -873,7 +873,7 @@ func (db *DBImpl) ensureRoomForWrite() error {
 func (db *DBImpl) writeToLSM(batch *writeBatchInternel) error {
 	for i, entry := range batch.entries {
 		var vs EValue
-		if entry.checkWithThreshold(uint32(db.option.ValueThreshold)) {
+		if !db.option.Separate || entry.checkWithThreshold(uint32(db.option.ValueThreshold)) {
 			vs = EValue{
 				Value: entry.value,
 				Meta:  entry.rtype &^ ValPtr,
@@ -1359,7 +1359,6 @@ func (db *DBImpl) GetSampleKeys(sampleSize, numGoroutines int) ([][]byte, error)
 		if err != nil {
 			return err
 		}
-
 		defer iter.Close()
 
 		sendIt := func(key []byte) error {

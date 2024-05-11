@@ -487,12 +487,19 @@ func (ls *levels) runCompact(compactId int, closer *internel.Closer) {
 		}
 
 		for _, p := range cps {
-			if compactId == 0 && p.level == 0 || p.adjusted >= 1.0 {
-				if run(p) {
+			if compactId == 0 {
+				// Worker ID zero prefers to compact L0 always.
+				if p.level == 0 && run(p) {
 					return true
 				}
 			} else {
-				break
+				if p.level != 0 && p.adjusted >= 1.0 {
+					if run(p) {
+						return true
+					}
+				} else {
+					break
+				}
 			}
 		}
 
@@ -949,8 +956,7 @@ func (ls *levels) fillTablesL0(ci *compactInfo) bool {
 	if ls.fillTablesL0ToBase(ci) {
 		return true
 	}
-	return false
-	//return ls.fillTablesL0ToL0(ci)
+	return ls.fillTablesL0ToL0(ci)
 }
 
 func (ls *levels) fillTablesL0ToBase(ci *compactInfo) bool {
@@ -958,7 +964,7 @@ func (ls *levels) fillTablesL0ToBase(ci *compactInfo) bool {
 		return false
 	}
 
-	if ci.cp.adjusted > 0.0 && ci.cp.adjusted < 1.0 {
+	if ci.cp.adjusted > 0.0 && ci.cp.adjusted < 0.5 {
 		return false
 	}
 

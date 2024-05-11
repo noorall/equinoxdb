@@ -117,7 +117,7 @@ func (l *level) Delete(delTables []*Table) error {
 // Replace will replace tables in delTables with addTables
 func (l *level) Replace(delTables, addTables []*Table) error {
 	if l.id == 0 {
-		l.opts.Logger.Debugf("replace a l0 level")
+		return nil
 	}
 
 	l.Lock()

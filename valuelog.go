@@ -39,6 +39,7 @@ type valueLog struct {
 	garbageCh          chan struct{}
 	discard            *discard
 	logger             internel.Logger
+	separate           bool
 }
 
 func OpenValueLog(option Options) (*valueLog, error) {
@@ -49,6 +50,7 @@ func OpenValueLog(option Options) (*valueLog, error) {
 		valueThreshold:     uint32(option.ValueThreshold),
 		garbageCh:          make(chan struct{}, 1),
 		logger:             option.Logger,
+		separate:           option.Separate,
 	}
 
 	if err := v.loadFiles(); err != nil {
@@ -143,7 +145,7 @@ func (v *valueLog) Write(batch *writeBatchInternel) error {
 	// write every entry
 	buf := &bytes.Buffer{}
 	for _, e := range batch.entries {
-		if e.checkWithThreshold(v.valueThreshold) {
+		if !v.separate || e.checkWithThreshold(v.valueThreshold) {
 			batch.ptrs = append(batch.ptrs, valPtr{})
 			continue
 		}

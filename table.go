@@ -240,9 +240,12 @@ func (t *Table) DecrRef() error {
 	if newRef == 0 {
 		// We can safely delete this file, because for all the current files, we always have
 		// at least one reference pointing to them.
-		if err := t.Delete(); err != nil {
-			return err
-		}
+		go func() {
+			if err := t.Delete(); err != nil {
+				t.opt.Logger.Warningf("Failed to delete table", err)
+			}
+			t.opt.Logger.Debugf("table %d deleted ", t.id)
+		}()
 	}
 
 	return nil
@@ -435,7 +438,7 @@ func (t *Table) getBiggestAndSmallest() error {
 	t.biggest = make([]byte, len(key))
 	copy(t.biggest, key)
 
-	return nil
+	return iter.Close()
 }
 
 func (t *Table) initIndex() error {

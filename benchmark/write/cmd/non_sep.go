@@ -88,10 +88,15 @@ func removeDir(dir string) {
 	}
 }
 
-func getTestDB() (equinox.DB, func()) {
-	dir, _ := ioutil.TempDir("/Users/noorall/GolandProjects/equinox/benchmark/write/db", "golbat-test")
+func getTestDB(separate bool) (equinox.DB, func()) {
+	dir, _ := ioutil.TempDir("/Users/noorall/GolandProjects/equinox/benchmark/write/db", "equinox-test")
 	options := equinox.DefaultOptions(dir)
-	db, _ := equinox.Open(options)
+	options.Separate = separate
+	db, err := equinox.Open(options)
+
+	if err != nil {
+		panic(err)
+	}
 
 	return db, func() {
 		db.Close()
@@ -99,51 +104,22 @@ func getTestDB() (equinox.DB, func()) {
 	}
 }
 
-func testWriteBoolean(dataSize int, batchSize int, Separate bool, Sync bool) {
-	db, fun := getTestDB()
-	time.Sleep(10 * time.Second)
+func testWrite(dataSize int, batchSize int, Separate bool, Sync bool, val string) {
+	time.Sleep(5 * time.Second)
+	db, fun := getTestDB(Separate)
+	time.Sleep(5 * time.Second)
 	start := time.Now()
 	defer fun()
-	point := data_type.New([]byte("bool_test"), data_type.BOOLEAN)
+	point := data_type.New([]byte("string_test"), data_type.STRING)
 	writeOptions := &equinox.WriteOptions{Separate: Separate, Sync: Sync}
 	for i := 0; i < dataSize; i++ {
-		value := rand.Intn(2) == 0
-		point.Put(uint64(i), value)
+		point.Put(uint64(i), val)
 		if point.Count() >= batchSize {
 			err := db.TSWrite(writeOptions, []data_type.TSEntry{point.DeepCopy()})
 			if err != nil {
 				fmt.Errorf("error")
 			}
 			point.Clean()
-		}
-	}
-	duration := time.Since(start)
-	ops := float64(dataSize) / duration.Seconds()
-	mbps := (float64(dataSize*(1+4+4+4+10)) / (1024 * 1024)) / duration.Seconds()
-	fmt.Printf("Total Writes: %d\n", dataSize)
-	fmt.Printf("Time Taken: %v\n", duration)
-	fmt.Printf("Throughput: %.2f ops/s\n", ops)
-	fmt.Printf("Write Speed: %.2f MB/s\n", mbps)
-}
-
-func testWriteString(dataSize int, batchSize int, Separate bool, Sync bool, val string) {
-	time.Sleep(5 * time.Second)
-	db, fun := getTestDB()
-	time.Sleep(5 * time.Second)
-	start := time.Now()
-	defer fun()
-	points := make([]data_type.TSEntry, batchSize)
-	writeOptions := &equinox.WriteOptions{Separate: Separate, Sync: Sync}
-	for i := 0; i < dataSize; i++ {
-		point := data_type.New([]byte("bool_test"), data_type.STRING)
-		point.Put(uint64(i), val)
-		points = append(points, point.DeepCopy())
-		if len(points) >= batchSize {
-			err := db.TSWrite(writeOptions, points)
-			if err != nil {
-				fmt.Errorf("error")
-			}
-			points = make([]data_type.TSEntry, batchSize)
 		}
 	}
 	duration := time.Since(start)
@@ -155,7 +131,7 @@ func testWriteString(dataSize int, batchSize int, Separate bool, Sync bool, val 
 	fmt.Printf("Write Speed: %.2f MB/s\n", mbps)
 }
 
-func testString() {
+func testWriteWithDifferentPointSize() {
 	data256, _ := generateRandomChars("256k")
 	data64, _ := generateRandomChars("64k")
 	data16, _ := generateRandomChars("16k")
@@ -164,26 +140,26 @@ func testString() {
 	data256b, _ := generateRandomChars("256b")
 	data64b, _ := generateRandomChars("64b")
 
-	testWriteString(40960, 1, true, true, data256)
-	testWriteString(40960*4, 1, true, true, data64)
-	testWriteString(40960*16, 1, true, true, data16)
-	testWriteString(40960*64, 1, true, true, data4)
-	testWriteString(40960*256, 1, true, true, data1)
-	testWriteString(40960*1024, 1, true, true, data256b)
-	testWriteString(40960*1024*4, 1, true, true, data64b)
+	testWrite(40960, 1, true, true, data256)
+	testWrite(40960*4, 1, true, true, data64)
+	testWrite(40960*16, 1, true, true, data16)
+	testWrite(40960*64, 1, true, true, data4)
+	testWrite(40960*256, 1, true, true, data1)
+	testWrite(40960*1024, 1, true, true, data256b)
+	testWrite(40960*1024*4, 1, true, true, data64b)
 
-	testWriteString(40960, 4, false, true, data256)
-	testWriteString(40960*4, 16, false, true, data64)
-	testWriteString(40960*16, 1024/16, false, true, data16)
-	testWriteString(40960*64, 1024/4, false, true, data4)
+	testWrite(40960, 1, false, true, data256)
+	testWrite(40960*4, 1, false, true, data64)
+	testWrite(40960*16, 1, false, true, data16)
+	testWrite(40960*64, 1, false, true, data4)
 	//
-	testWriteString(40960*256, 1024, false, true, data1)
-	testWriteString(40960*1024, 1024*4, false, true, data256b)
-	testWriteString(40960*1024*4, 1024*16, false, true, data64b)
+	testWrite(40960*256, 1, false, true, data1)
+	testWrite(40960*1024, 1, false, true, data256b)
+	testWrite(40960*1024*4, 1, false, true, data64b)
 }
 
 func main() {
 	//testWriteBoolean(10000000, 100, true, true)
 	//time.Sleep(10 * time.Second)
-	testString()
+	testWriteWithDifferentPointSize()
 }

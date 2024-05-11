@@ -64,6 +64,8 @@ type Options struct {
 	NumCompactors       int
 
 	VerifyTableChecksum bool
+
+	Separate bool
 }
 
 type ReadOptions struct {
@@ -108,5 +110,6 @@ func DefaultOptions(dir string) Options {
 		comparator:          CompareKeys,
 		Logger:              internel.DefaultLogger(internel.INFO),
 		VerifyTableChecksum: false,
+		Separate:            true,
 	}
 }
