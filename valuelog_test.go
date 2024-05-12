@@ -30,7 +30,7 @@ func TestValueLogBasic(t *testing.T) {
 	option := getDefaultOption()
 	option.ValueLogDir = dir
 
-	log, err := OpenValueLog(*option)
+	log, err := OpenValueLog(*option, 0)
 	require.Nil(t, err)
 	require.NotNil(t, log)
 	defer log.Close()
@@ -65,7 +65,7 @@ func TestValueLogReload(t *testing.T) {
 	option.ValueLogDir = dir
 	option.ValueThreshold = 1
 
-	log, err := OpenValueLog(*option)
+	log, err := OpenValueLog(*option, 0)
 	require.Nil(t, err)
 	require.NotNil(t, log)
 	defer log.Close()
@@ -110,7 +110,7 @@ func TestValueLogReload(t *testing.T) {
 	}
 
 	// reopen
-	log, err = OpenValueLog(*option)
+	log, err = OpenValueLog(*option, 0)
 	require.Nil(t, err)
 	require.NotNil(t, log)
 	// read
@@ -133,7 +133,7 @@ func TestValueLogGC(t *testing.T) {
 	option.ValueLogFileSize = 1 << 20 // 2 MB
 	option.ValueThreshold = 1 << 10   // 1KB
 
-	log, err := OpenValueLog(*option)
+	log, err := OpenValueLog(*option, 0)
 	require.Nil(t, err)
 	defer log.Close()
 

@@ -66,6 +66,8 @@ type Options struct {
 	VerifyTableChecksum bool
 
 	Separate bool
+
+	VFileWriteParallelism int
 }
 
 type ReadOptions struct {

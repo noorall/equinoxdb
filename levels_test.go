@@ -54,7 +54,7 @@ func getLevels(numCompactors int) *levels {
 		panic(err)
 	}
 
-	vlog, err := OpenValueLog(opts)
+	vlog, err := OpenValueLog(opts, 0)
 	if err != nil {
 		mff.Close()
 		panic(err)

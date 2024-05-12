@@ -27,7 +27,7 @@ func createTestDBImpl() (*DBImpl, func()) {
 	opts.NumCompactors = 0
 	opts.ValueLogDir = vlogDir
 
-	vlog, err := OpenValueLog(opts)
+	vlog, err := OpenValueLog(opts, 0)
 	if err != nil {
 		panic(err)
 	}

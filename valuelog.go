@@ -40,11 +40,13 @@ type valueLog struct {
 	discard            *discard
 	logger             internel.Logger
 	separate           bool
+	fileWrite          sync.RWMutex
 }
 
-func OpenValueLog(option Options) (*valueLog, error) {
+func OpenValueLog(option Options, lifeCycle int) (*valueLog, error) {
+	valueLogDir := filepath.Join(option.ValueLogDir, strconv.Itoa(lifeCycle))
 	v := &valueLog{
-		dirPath:            option.ValueLogDir,
+		dirPath:            valueLogDir,
 		valueLogFileSize:   uint32(option.ValueLogFileSize),
 		valueLogMaxEntries: uint32(option.ValueLogMaxEntries),
 		valueThreshold:     uint32(option.ValueThreshold),
@@ -125,6 +127,8 @@ func (v *valueLog) Write(batch *writeBatchInternel) error {
 	if err := v.validate(batch); err != nil {
 		return err
 	}
+	v.fileWrite.Lock()
+	defer v.fileWrite.Unlock()
 
 	v.filesLock.RLock()
 	maxFid := v.maxFid

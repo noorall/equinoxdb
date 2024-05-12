@@ -23,10 +23,12 @@ import (
 	"equinox/data_type"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math/rand"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -131,6 +133,21 @@ func testWrite(dataSize int, batchSize int, Separate bool, Sync bool, val string
 	fmt.Printf("Write Speed: %.2f MB/s\n", mbps)
 }
 
+func getTestDBForParallelism(maxWriteParallelism int) (equinox.DB, func()) {
+	dir, _ := ioutil.TempDir("/Users/noorall/GolandProjects/equinox/benchmark/write/db", "equinox-test")
+	options := equinox.DefaultOptions(dir)
+	options.VFileWriteParallelism = maxWriteParallelism
+	db, err := equinox.Open(options)
+	if err != nil {
+		panic(err)
+	}
+
+	return db, func() {
+		db.Close()
+		removeDir(dir)
+	}
+}
+
 func testWriteWithDifferentPointSize() {
 	data256, _ := generateRandomChars("256k")
 	data64, _ := generateRandomChars("64k")
@@ -158,8 +175,83 @@ func testWriteWithDifferentPointSize() {
 	testWrite(40960*1024*4, 1, false, true, data64b)
 }
 
+func parallelismWrite(dataSize int, batchSize int, Separate bool, Sync bool, val string, writeParallelism int, client int) {
+	time.Sleep(5 * time.Second)
+	db, fun := getTestDBForParallelism(writeParallelism)
+	defer fun()
+	time.Sleep(5 * time.Second)
+
+	var wg sync.WaitGroup
+	wg.Add(client)
+	start := time.Now()
+	dataSize = dataSize / client
+	for j := 0; j < client; j++ {
+		go func(id int) {
+			defer wg.Done()
+			point := data_type.New([]byte("string_test"), data_type.STRING)
+			writeOptions := &equinox.WriteOptions{Separate: Separate, Sync: Sync}
+
+			for i := 0; i < dataSize; i++ {
+				point.Put(uint64(i), val)
+				if point.Count() >= batchSize {
+					err := db.TSWrite(writeOptions, []data_type.TSEntry{point.DeepCopy()})
+					if err != nil {
+						fmt.Errorf("error")
+					}
+					point.Clean()
+				}
+			}
+			log.Default().Printf("Client %d finished", id)
+		}(j)
+	}
+
+	wg.Wait()
+
+	dataSize = dataSize * client
+	duration := time.Since(start)
+	ops := float64(dataSize) / duration.Seconds()
+	mbps := (float64(dataSize*(4+4+4+len(val)+10)) / (1024 * 1024)) / duration.Seconds()
+	fmt.Printf("Total Writes: %d\n", dataSize)
+	fmt.Printf("Time Taken: %v s\n", duration)
+	fmt.Printf("Throughput: %.2f ops/s\n", ops)
+	fmt.Printf("Write Speed: %.2f MB/s\n", mbps)
+}
+
+func testWriteWithDifferentWriteParallelism() {
+	data256, _ := generateRandomChars("256k")
+	data64, _ := generateRandomChars("64k")
+	data16, _ := generateRandomChars("16k")
+	data4, _ := generateRandomChars("4k")
+	data1, _ := generateRandomChars("1k")
+	data256b, _ := generateRandomChars("256b")
+	data64b, _ := generateRandomChars("64b")
+	parallelismWrite(40960, 1, true, true, data256, 1, 1)
+	for i := 1; i <= 32; i *= 2 {
+		parallelismWrite(40960, 1, true, true, data256, 1, i)
+		parallelismWrite(40960*4, 1, true, true, data64, 1, i)
+		parallelismWrite(40960*16, 1, true, true, data16, 1, i)
+		parallelismWrite(40960*64, 1, true, true, data4, 1, i)
+		parallelismWrite(40960*256, 1, true, true, data1, 1, i)
+		parallelismWrite(40960*1024, 1, true, true, data256b, 1, i)
+		parallelismWrite(40960*1024*4, 1, true, true, data64b, 1, i)
+		fmt.Printf("finish round: %d\n", i)
+	}
+
+	//parallelismWrite(40960, 1, true, true, data256, db)
+	//parallelismWrite(40960, 1, true, true, data256, db)
+	//parallelismWrite(40960, 1, true, true, data256, db)
+	//parallelismWrite(40960, 1, true, true, data256, db)
+
+	//parallelismWrite(40960*4, 1, true, true, data64, writeParallelism)
+	//parallelismWrite(40960*16, 1, true, true, data16, writeParallelism)
+	//parallelismWrite(40960*64, 1, true, true, data4, writeParallelism)
+	//parallelismWrite(40960*256, 1, true, true, data1, writeParallelism)
+	//parallelismWrite(40960*1024, 1, true, true, data256b, writeParallelism)
+	//parallelismWrite(40960*1024*4, 1, true, true, data64b, writeParallelism)
+}
+
 func main() {
-	//testWriteBoolean(10000000, 100, true, true)
-	//time.Sleep(10 * time.Second)
-	testWriteWithDifferentPointSize()
+	// testWriteWithDifferentPointSize()
+
+	testWriteWithDifferentWriteParallelism()
 }

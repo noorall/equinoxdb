@@ -3,12 +3,12 @@ package equinox
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"equinox/data_type"
 	"equinox/internel"
 	"fmt"
 	"io/ioutil"
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
@@ -62,6 +62,7 @@ type DBImpl struct {
 	manifest  *manifestFile
 	ls        *levels
 	vlog      *valueLog
+	vlogs     []*valueLog
 	writeCh   chan *writeBatchInternel
 	flushCh   chan *memTable
 
@@ -71,6 +72,8 @@ type DBImpl struct {
 	tsEntryCache map[string][]byte
 	keyIndex     map[string]int
 	walTime      int
+	rwMu         sync.RWMutex
+	idx          atomic.Uint64
 }
 
 const (
@@ -83,7 +86,15 @@ func Open(options Options) (DB, error) {
 		return nil, err
 	}
 
-	if err := createDirs([]string{options.Dir, options.ValueLogDir}); err != nil {
+	dir := []string{options.Dir, filepath.Join(options.ValueLogDir, strconv.Itoa(0))}
+
+	if options.VFileWriteParallelism > 1 {
+		for i := 1; i < options.VFileWriteParallelism; i++ {
+			dir = append(dir, filepath.Join(options.ValueLogDir, strconv.Itoa(i)))
+		}
+	}
+
+	if err := createDirs(dir); err != nil {
 		return nil, err
 	}
 
@@ -148,6 +159,9 @@ func Open(options Options) (DB, error) {
 		snapshots:     newSnapshotList(),
 		tsEntryCache:  make(map[string][]byte),
 		keyIndex:      make(map[string]int),
+		rwMu:          sync.RWMutex{},
+		idx:           atomic.Uint64{},
+		vlogs:         make([]*valueLog, 0),
 	}
 
 	// Cleanup all the goroutines started by badger in case of an error.
@@ -173,7 +187,19 @@ func Open(options Options) (DB, error) {
 
 	// init value log
 	db.option.Logger.Infof("Opening value log")
-	db.vlog, err = OpenValueLog(*db.option)
+	db.vlog, err = OpenValueLog(*db.option, 0)
+
+	if db.option.VFileWriteParallelism > 1 {
+		db.option.Logger.Infof("Opening value log for write parallelism")
+		for i := 1; i < db.option.VFileWriteParallelism; i++ {
+			vlog, err := OpenValueLog(*db.option, i)
+			if err != nil {
+				return db, Wrapf(err, "During value log open")
+			}
+			db.vlogs = append(db.vlogs, vlog)
+		}
+	}
+
 	if err != nil {
 		return db, Wrapf(err, "During value log open")
 	}
@@ -351,23 +377,32 @@ func (db *DBImpl) TSWrite(options *WriteOptions, points []data_type.TSEntry) err
 	wb := NewWriteBatch(db)
 
 	for _, point := range points {
-		key := point.KeyStr()
-		if options.Separate {
-			if _, exists := db.tsEntryCache[key]; !exists {
-				db.tsEntryCache[key] = []byte{}
-			}
-			db.tsEntryCache[key] = append(db.tsEntryCache[key], point.GetBytes()...)
-			if len(db.tsEntryCache[key]) > threshold {
-				intBytes := make([]byte, 8)
-				binary.BigEndian.PutUint64(intBytes, uint64(db.keyIndex[key]))
-				db.keyIndex[key]++
-				wb.Put(append(point.Key(), intBytes...), db.tsEntryCache[key])
-				db.tsEntryCache[key] = db.tsEntryCache[key][:0]
-			}
-		} else {
-			db.keyIndex[key]++
-			wb.Put(append(point.Key(), []byte(strconv.Itoa(db.keyIndex[key]))...), point.GetBytes())
-		}
+		//key := point.KeyStr()
+		//if options.Separate {
+		//	if _, exists := db.tsEntryCache[key]; !exists {
+		//		db.rwMu.Lock()
+		//		db.tsEntryCache[key] = []byte{}
+		//		db.rwMu.Unlock()
+		//	}
+		//	db.rwMu.Lock()
+		//	db.tsEntryCache[key] = append(db.tsEntryCache[key], point.GetBytes()...)
+		//	db.rwMu.Unlock()
+		//	if len(db.tsEntryCache[key]) > threshold {
+		//		intBytes := make([]byte, 8)
+		//		binary.BigEndian.PutUint64(intBytes, uint64(db.keyIndex[key]))
+		//		db.rwMu.Lock()
+		//		db.keyIndex[key]++
+		//		db.rwMu.Unlock()
+		//		wb.Put(append(point.Key(), intBytes...), db.tsEntryCache[key])
+		//		db.tsEntryCache[key] = db.tsEntryCache[key][:0]
+		//	}
+		//} else {
+		//	db.keyIndex[key]++
+		//	wb.Put(append(point.Key(), []byte(strconv.Itoa(db.keyIndex[key]))...), point.GetBytes())
+		//}
+		// db.keyIndex[key]++
+		db.idx.Add(1)
+		wb.Put(point.Key(), point.GetBytes())
 	}
 	if wb.sz != 0 {
 		return db.Write(options, wb)
@@ -795,8 +830,16 @@ func (db *DBImpl) writeBatches(batches []*writeBatchInternel) error {
 	}
 
 	db.option.Logger.Debugf("writing batches. Write to value log")
+	currentVlog := db.vlog
+	if db.option.VFileWriteParallelism > 1 {
+		vId := rand.Intn(db.option.VFileWriteParallelism)
+		if vId < len(db.vlogs) {
+			currentVlog = db.vlogs[vId]
+		}
+	}
+
 	for _, batch := range batches {
-		if err := db.vlog.Write(batch); err != nil {
+		if err := currentVlog.Write(batch); err != nil {
 			done(err)
 			return err
 		}
@@ -1014,6 +1057,7 @@ func buildL0Table(mt *memTable, opts Options) *TableBuilder {
 	iter := mt.skl.Iterator()
 	defer iter.Close()
 	b := NewTableBuilder(opts)
+	// TODO：// 实现合并
 	for iter.SeekToFirst(); iter.Valid(); iter.Next() {
 		var vs EValue
 		vs.Decode(iter.Value())
