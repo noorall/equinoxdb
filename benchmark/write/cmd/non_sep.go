@@ -137,6 +137,7 @@ func getTestDBForParallelism(maxWriteParallelism int) (equinox.DB, func()) {
 	dir, _ := ioutil.TempDir("/Users/noorall/GolandProjects/equinox/benchmark/write/db", "equinox-test")
 	options := equinox.DefaultOptions(dir)
 	options.VFileWriteParallelism = maxWriteParallelism
+	options.ValueThreshold = 4 * 1024
 	db, err := equinox.Open(options)
 	if err != nil {
 		panic(err)
@@ -188,7 +189,7 @@ func parallelismWrite(dataSize int, batchSize int, Separate bool, Sync bool, val
 	for j := 0; j < client; j++ {
 		go func(id int) {
 			defer wg.Done()
-			point := data_type.New([]byte("string_test"), data_type.STRING)
+			point := data_type.New([]byte("string_test"+strconv.Itoa(id)), data_type.STRING)
 			writeOptions := &equinox.WriteOptions{Separate: Separate, Sync: Sync}
 
 			for i := 0; i < dataSize; i++ {
@@ -225,7 +226,11 @@ func testWriteWithDifferentWriteParallelism() {
 	data1, _ := generateRandomChars("1k")
 	data256b, _ := generateRandomChars("256b")
 	data64b, _ := generateRandomChars("64b")
-	parallelismWrite(40960, 1, true, true, data256, 1, 1)
+	parallelismWrite(40960, 1, true, true, data256, 1, 4)
+	parallelismWrite(40960, 1, true, true, data256, 2, 4)
+	parallelismWrite(40960, 1, true, true, data256, 3, 4)
+	parallelismWrite(40960, 1, true, true, data256, 4, 4)
+	return
 	for i := 1; i <= 32; i *= 2 {
 		parallelismWrite(40960, 1, true, true, data256, 1, i)
 		parallelismWrite(40960*4, 1, true, true, data64, 1, i)

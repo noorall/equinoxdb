@@ -1,6 +1,9 @@
 package equinox
 
-import "equinox/internel"
+import (
+	"equinox/internel"
+	"equinox/metric"
+)
 
 // DB contents are stored in a set of blocks, each of which holds a
 // sequence of key,value pairs.  Each block may be compressed before
@@ -68,6 +71,8 @@ type Options struct {
 	Separate bool
 
 	VFileWriteParallelism int
+
+	Metric *metric.Metric
 }
 
 type ReadOptions struct {
@@ -113,5 +118,6 @@ func DefaultOptions(dir string) Options {
 		Logger:              internel.DefaultLogger(internel.INFO),
 		VerifyTableChecksum: false,
 		Separate:            true,
+		Metric:              &metric.Metric{},
 	}
 }

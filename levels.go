@@ -822,6 +822,7 @@ func (ls *levels) subcompact(it Iterator, kr keyRange, ci compactInfo,
 				}
 			}
 
+			// 跳过被删除的key
 			if len(skipKey) > 0 {
 				if SameKey(curr, skipKey) {
 					numSkips++

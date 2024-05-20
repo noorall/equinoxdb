@@ -101,11 +101,8 @@ type entry struct {
 
 func (e *entry) estimateSize(threshold uint32) uint32 {
 	klen, vlen := uint32(len(e.key)), uint32(len(e.value))
-	if vlen < threshold {
-		return klen + vlen + 1
-	}
 
-	return klen + uint32(vptrSize) + 1
+	return klen + vlen + 1
 }
 
 func (e *entry) checkWithThreshold(threshold uint32) bool {

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
@@ -199,6 +198,8 @@ func Open(options Options) (DB, error) {
 			db.vlogs = append(db.vlogs, vlog)
 		}
 	}
+
+	db.vlogs = append(db.vlogs, db.vlog)
 
 	if err != nil {
 		return db, Wrapf(err, "During value log open")
@@ -617,11 +618,6 @@ func (db *DBImpl) doClose() error {
 	// close write chan, doesn't accept any writes.
 	close(db.writeCh)
 
-	db.option.Logger.Infof("Closing value log")
-	if verr := db.vlog.Close(); verr != nil {
-		err = Wrap(err, "DB.close")
-	}
-
 	// make sure all mem in flush chan will flush to disk. should push current mem into imm
 	if db.mem != nil {
 		if db.mem.skl.Empty() {
@@ -662,6 +658,11 @@ func (db *DBImpl) doClose() error {
 	db.option.Logger.Infof("Stoping memtable flush goroutine")
 	close(db.flushCh)
 	db.closers.memtable.SignalAndWait()
+
+	db.option.Logger.Infof("Closing value log vFile flush cost time: %d s", db.option.Metric.GetVFileFlushTIme()/1000)
+	if verr := db.vlog.Close(); verr != nil {
+		err = Wrap(err, "DB.close")
+	}
 
 	// stop compact and wait it finished
 	db.option.Logger.Infof("Stoping compact goroutines")
@@ -829,21 +830,22 @@ func (db *DBImpl) writeBatches(batches []*writeBatchInternel) error {
 		}
 	}
 
-	db.option.Logger.Debugf("writing batches. Write to value log")
-	currentVlog := db.vlog
-	if db.option.VFileWriteParallelism > 1 {
-		vId := rand.Intn(db.option.VFileWriteParallelism)
-		if vId < len(db.vlogs) {
-			currentVlog = db.vlogs[vId]
-		}
-	}
-
-	for _, batch := range batches {
-		if err := currentVlog.Write(batch); err != nil {
-			done(err)
-			return err
-		}
-	}
+	// TODO remove this part
+	//db.option.Logger.Debugf("writing batches. Write to value log")
+	//currentVlog := db.vlog
+	//if db.option.VFileWriteParallelism > 1 {
+	//	vId := rand.Intn(db.option.VFileWriteParallelism)
+	//	if vId < len(db.vlogs) {
+	//		currentVlog = db.vlogs[vId]
+	//	}
+	//}
+	//
+	//for _, batch := range batches {
+	//	if err := currentVlog.Write(batch); err != nil {
+	//		done(err)
+	//		return err
+	//	}
+	//}
 
 	db.option.Logger.Debugf("Writing to memtable")
 	count := 0
@@ -913,19 +915,12 @@ func (db *DBImpl) ensureRoomForWrite() error {
 	}
 }
 
+// TODO
 func (db *DBImpl) writeToLSM(batch *writeBatchInternel) error {
-	for i, entry := range batch.entries {
-		var vs EValue
-		if !db.option.Separate || entry.checkWithThreshold(uint32(db.option.ValueThreshold)) {
-			vs = EValue{
-				Value: entry.value,
-				Meta:  entry.rtype &^ ValPtr,
-			}
-		} else {
-			vs = EValue{
-				Value: batch.ptrs[i].Encode(),
-				Meta:  entry.rtype | ValPtr,
-			}
+	for _, entry := range batch.entries {
+		vs := EValue{
+			Value: entry.value,
+			Meta:  entry.rtype &^ ValPtr,
 		}
 
 		if err := db.mem.Put(entry.key, vs); err != nil {
@@ -997,7 +992,9 @@ func (db *DBImpl) flushMemTable(c *internel.Closer) error {
 
 		// If an error occurs during flushing, continue flushing until it is successful.
 		for {
+			db.option.Logger.Infof("Flushing memtable")
 			err := db.doFlush(mt)
+			db.option.Logger.Infof("End memtable")
 			if err == nil {
 				// remove the flushed memtable.
 				db.Lock()
@@ -1023,7 +1020,7 @@ func (db *DBImpl) doFlush(mt *memTable) error {
 		return nil
 	}
 
-	builder := buildL0Table(mt, *db.option)
+	builder := buildL0Table(mt, *db.option, db.vlogs)
 
 	if builder.Empty() {
 		builder.Finish()
@@ -1052,22 +1049,81 @@ func (db *DBImpl) newMemTable() (*memTable, error) {
 	return mem, nil
 }
 
+func calculateSeparateSize(key []byte, value EValue) uint64 {
+	klen, vlen := uint64(len(key)), uint64(len(value.Value))
+	return klen + vlen + 1 + 8
+}
+
+func subDoSeparate(keys [][]byte, values []EValue, separateSizes []uint64, vFiles []*valueLog, opts Options) {
+	parallelism := len(vFiles)
+	total := len(keys)
+	var wg sync.WaitGroup
+	wg.Add(parallelism)
+	start := time.Now()
+	for i := 0; i < parallelism; i++ {
+		s := i * total / parallelism
+		e := (i + 1) * total / parallelism
+		var separateSize uint64
+		for _, value := range separateSizes[s:e] {
+			separateSize += value
+		}
+		go func(vFile *valueLog) {
+			defer wg.Done()
+			err := vFile.WriteValues(keys[s:e], values[s:e], separateSize)
+			if err != nil {
+				opts.Logger.Errorf("Error writing values to file: %v", err)
+			}
+		}(vFiles[i])
+	}
+	wg.Wait()
+	opts.Metric.RecordVFileFlushTime(time.Since(start).Milliseconds())
+}
+
 // buildL0Table builds a new table from the memtable.
-func buildL0Table(mt *memTable, opts Options) *TableBuilder {
+func buildL0Table(mt *memTable, opts Options, vFile []*valueLog) *TableBuilder {
 	iter := mt.skl.Iterator()
 	defer iter.Close()
 	b := NewTableBuilder(opts)
-	// TODO：// 实现合并
+
+	keys := make([][]byte, 0)
+	values := make([]EValue, 0)
+	separateSize := make([]uint64, 0)
+	opts.Logger.Infof("flush memetable")
 	for iter.SeekToFirst(); iter.Valid(); iter.Next() {
 		var vs EValue
 		vs.Decode(iter.Value())
+		if len(keys) != 0 && SameKey(iter.Key(), keys[len(keys)-1]) {
+			if vs.Meta&Delete == Delete {
+				keys[len(keys)-1] = iter.Key()
+				values[len(values)-1] = vs
+			} else if values[len(values)-1].Meta&Delete == Delete {
+				keys = append(keys, iter.Key())
+				values = append(values, vs)
+			} else {
+				keys[len(keys)-1] = iter.Key()
+				values[len(values)-1].Value = append(values[len(values)-1].Value, vs.Value...)
+			}
+		} else {
+			if len(keys) != 0 {
+				separateSize = append(separateSize, calculateSeparateSize(keys[len(keys)-1], values[len(values)-1]))
+			}
+			keys = append(keys, iter.Key())
+			values = append(values, vs)
+		}
+	}
+	separateSize = append(separateSize, calculateSeparateSize(keys[len(keys)-1], values[len(values)-1]))
+	if opts.Separate {
+		subDoSeparate(keys, values, separateSize, vFile, opts)
+	}
 
+	for i := 0; i < len(keys); i++ {
+		key := keys[i]
+		vs := values[i]
 		var vp valPtr
 		if vs.Meta&ValPtr > 0 {
 			vp.Decode(vs.Value)
 		}
-
-		b.Add(iter.Key(), vs, vp.len)
+		b.Add(key, vs, vp.len)
 	}
 
 	return b

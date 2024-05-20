@@ -6,6 +6,7 @@ import (
 	"equinox/internel"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"io/ioutil"
 	"math"
 	"os"
@@ -123,6 +124,7 @@ func OpenValueLog(option Options, lifeCycle int) (*valueLog, error) {
 	return v, nil
 }
 
+// 追加value ptr 但是不写入value
 func (v *valueLog) Write(batch *writeBatchInternel) error {
 	if err := v.validate(batch); err != nil {
 		return err
@@ -175,6 +177,80 @@ func (v *valueLog) Write(batch *writeBatchInternel) error {
 	// flush
 	if _, err := v.flush(curLogFile); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (f *logFile) EncodeToVFile(key []byte, value EValue, buf *bytes.Buffer) (uint32, error) {
+	h := header{
+		klen:       uint32(len(key)),
+		vlen:       uint32(len(value.Value)),
+		recordType: byte(value.Meta),
+	}
+
+	hash := crc32.New(internel.CastagnoliCrcTable)
+	writer := io.MultiWriter(buf, hash)
+
+	// encode header
+	var headerBuf [maxHeaderSize]byte
+	sz := h.Encode(headerBuf[:])
+	Check2(writer.Write(headerBuf[:sz]))
+
+	// write key and value
+	Check2(writer.Write(key))
+	Check2(writer.Write(value.Value))
+
+	// write crc32
+	var crcBuf [crc32.Size]byte
+	binary.BigEndian.PutUint32(crcBuf[:], hash.Sum32())
+	Check2(writer.Write(crcBuf[:]))
+
+	return uint32(sz + len(key) + len(value.Value) + crc32.Size), nil
+}
+
+func (v *valueLog) WriteValues(keys [][]byte, values []EValue, separateSize uint64) error {
+	v.filesLock.RLock()
+	maxFid := v.maxFid
+	curLogFile := v.filesMap[maxFid]
+	v.filesLock.RUnlock()
+
+	if err := v.validateWriteSize(separateSize); err != nil {
+		curLogFile, err = v.flush(curLogFile)
+		if err != nil {
+			return err
+		}
+	}
+	// clear
+	written := 0
+	// write every entry
+	buf := &bytes.Buffer{}
+	for i := 0; i < len(keys); i++ {
+		key := keys[i]
+		value := values[i]
+		if len(value.Value) < int(threshold) {
+			continue
+		}
+		p := valPtr{}
+		p.fid = curLogFile.fid
+		p.offset = v.writeOffset()
+		plen, err := curLogFile.EncodeToVFile(key, value, buf)
+		if err != nil {
+			return err
+		}
+		// atomic update the offset, allow the concurrently write entry to the same log file
+		atomic.AddUint32(&v.writableLogOffset, plen)
+		err = curLogFile.WriteEntryFrom(buf)
+		p.len = plen
+		value.Value = p.Encode()
+		value.Meta = value.Meta | ValPtr
+		written++
+	}
+
+	v.numEntriesWritten += uint32(written)
+
+	if err := curLogFile.Sync(); err != nil {
+		v.logger.Errorf("Error Sync value log(%s): %+v", curLogFile.path, err)
 	}
 
 	return nil
@@ -368,6 +444,18 @@ func (v *valueLog) sortAndFilterFids() []uint32 {
 func (v *valueLog) validate(batch *writeBatchInternel) error {
 	offset := uint64(v.writeOffset())
 	estimatedVlogOffset := batch.ApproximateSize() + offset
+
+	if estimatedVlogOffset > uint64(maxVlogFileSize) {
+		return fmt.Errorf("Batch size offset %d is bigger than maximum offset %d",
+			estimatedVlogOffset, maxVlogFileSize)
+	}
+
+	return nil
+}
+
+func (v *valueLog) validateWriteSize(separateSize uint64) error {
+	offset := uint64(v.writeOffset())
+	estimatedVlogOffset := separateSize + offset
 
 	if estimatedVlogOffset > uint64(maxVlogFileSize) {
 		return fmt.Errorf("Batch size offset %d is bigger than maximum offset %d",
