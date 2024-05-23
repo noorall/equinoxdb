@@ -985,6 +985,7 @@ func (db *DBImpl) openMemTables() error {
 func (db *DBImpl) flushMemTable(c *internel.Closer) error {
 	defer c.Done()
 
+	// TODO: 潜在的并行点
 	for mt := range db.flushCh {
 		if mt == nil {
 			continue
@@ -992,9 +993,7 @@ func (db *DBImpl) flushMemTable(c *internel.Closer) error {
 
 		// If an error occurs during flushing, continue flushing until it is successful.
 		for {
-			db.option.Logger.Infof("Flushing memtable")
 			err := db.doFlush(mt)
-			db.option.Logger.Infof("End memtable")
 			if err == nil {
 				// remove the flushed memtable.
 				db.Lock()
@@ -1049,12 +1048,12 @@ func (db *DBImpl) newMemTable() (*memTable, error) {
 	return mem, nil
 }
 
-func calculateSeparateSize(key []byte, value EValue) uint64 {
+func calculateSeparateSize(key []byte, value *EValue) uint64 {
 	klen, vlen := uint64(len(key)), uint64(len(value.Value))
 	return klen + vlen + 1 + 8
 }
 
-func subDoSeparate(keys [][]byte, values []EValue, separateSizes []uint64, vFiles []*valueLog, opts Options) {
+func subDoSeparate(keys [][]byte, values []*EValue, separateSizes []uint64, vFiles []*valueLog, opts Options, bWg *sync.WaitGroup) {
 	parallelism := len(vFiles)
 	total := len(keys)
 	var wg sync.WaitGroup
@@ -1069,7 +1068,7 @@ func subDoSeparate(keys [][]byte, values []EValue, separateSizes []uint64, vFile
 		}
 		go func(vFile *valueLog) {
 			defer wg.Done()
-			err := vFile.WriteValues(keys[s:e], values[s:e], separateSize)
+			err := vFile.WriteValues(keys[s:e], values[s:e], separateSize, bWg)
 			if err != nil {
 				opts.Logger.Errorf("Error writing values to file: %v", err)
 			}
@@ -1080,40 +1079,45 @@ func subDoSeparate(keys [][]byte, values []EValue, separateSizes []uint64, vFile
 }
 
 // buildL0Table builds a new table from the memtable.
-func buildL0Table(mt *memTable, opts Options, vFile []*valueLog) *TableBuilder {
+func buildL0Table(mt *memTable, opts Options, vFiles []*valueLog) *TableBuilder {
 	iter := mt.skl.Iterator()
 	defer iter.Close()
 	b := NewTableBuilder(opts)
 
 	keys := make([][]byte, 0)
-	values := make([]EValue, 0)
+	values := make([]*EValue, 0)
 	separateSize := make([]uint64, 0)
-	opts.Logger.Infof("flush memetable")
 	for iter.SeekToFirst(); iter.Valid(); iter.Next() {
 		var vs EValue
 		vs.Decode(iter.Value())
 		if len(keys) != 0 && SameKey(iter.Key(), keys[len(keys)-1]) {
 			if vs.Meta&Delete == Delete {
 				keys[len(keys)-1] = iter.Key()
-				values[len(values)-1] = vs
-			} else if values[len(values)-1].Meta&Delete == Delete {
+				values[len(keys)-1] = vs.deepCopy()
+			} else if values[len(keys)-1].Meta&Delete == Delete {
 				keys = append(keys, iter.Key())
-				values = append(values, vs)
+				values = append(values, vs.deepCopy())
 			} else {
 				keys[len(keys)-1] = iter.Key()
-				values[len(values)-1].Value = append(values[len(values)-1].Value, vs.Value...)
+				values[len(keys)-1].Value = append(values[len(keys)-1].Value, vs.Value...)
 			}
 		} else {
 			if len(keys) != 0 {
-				separateSize = append(separateSize, calculateSeparateSize(keys[len(keys)-1], values[len(values)-1]))
+				separateSize = append(separateSize, calculateSeparateSize(keys[len(keys)-1], values[len(keys)-1]))
 			}
 			keys = append(keys, iter.Key())
-			values = append(values, vs)
+			values = append(values, vs.deepCopy())
 		}
 	}
-	separateSize = append(separateSize, calculateSeparateSize(keys[len(keys)-1], values[len(values)-1]))
+	//TODO remove this part
+	suf := opts.Metric.IncrWritePoints()
+	for i := 0; i < len(keys); i++ {
+		keys[i] = append(append(ParseKey(keys[i]), []byte(strconv.Itoa(int(suf)))...), keys[i][len(keys[i])-8:]...)
+	}
+
+	separateSize = append(separateSize, calculateSeparateSize(keys[len(keys)-1], values[len(keys)-1]))
 	if opts.Separate {
-		subDoSeparate(keys, values, separateSize, vFile, opts)
+		subDoSeparate(keys, values, separateSize, vFiles, opts, &b.wg)
 	}
 
 	for i := 0; i < len(keys); i++ {
@@ -1123,7 +1127,8 @@ func buildL0Table(mt *memTable, opts Options, vFile []*valueLog) *TableBuilder {
 		if vs.Meta&ValPtr > 0 {
 			vp.Decode(vs.Value)
 		}
-		b.Add(key, vs, vp.len)
+
+		b.Add(key, *vs, vp.len)
 	}
 
 	return b
@@ -1573,7 +1578,7 @@ type EValue struct {
 }
 
 func (ev *EValue) Decode(b []byte) {
-	// CAUTION: not copy, just ref
+	// 必须深拷贝 否则可能引发问题
 	ev.Meta = b[0]
 	ev.Value = b[1:]
 }
@@ -1594,4 +1599,12 @@ func (ev *EValue) EncodeTo(buf *bytes.Buffer) {
 
 func (ev *EValue) EncodedSize() uint32 {
 	return uint32(1 + len(ev.Value))
+}
+
+func (ev *EValue) deepCopy() *EValue {
+	return &EValue{
+		Meta:    ev.Meta,
+		Value:   safeCopy(nil, ev.Value),
+		version: ev.version,
+	}
 }

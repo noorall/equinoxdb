@@ -802,7 +802,7 @@ func (ls *levels) subcompact(it Iterator, kr keyRange, ci compactInfo,
 		lastKey, skipKey []byte
 		numBuilds        int
 	)
-
+	//TODO check
 	buildTable := func(builder *TableBuilder) {
 		start := time.Now()
 		var numKeys, numSkips uint64

@@ -102,7 +102,7 @@ func getTestDB(separate bool) (equinox.DB, func()) {
 
 	return db, func() {
 		db.Close()
-		removeDir(dir)
+		//removeDir(dir)
 	}
 }
 
@@ -111,7 +111,6 @@ func testWrite(dataSize int, batchSize int, Separate bool, Sync bool, val string
 	db, fun := getTestDB(Separate)
 	time.Sleep(5 * time.Second)
 	start := time.Now()
-	defer fun()
 	point := data_type.New([]byte("string_test"), data_type.STRING)
 	writeOptions := &equinox.WriteOptions{Separate: Separate, Sync: Sync}
 	for i := 0; i < dataSize; i++ {
@@ -124,6 +123,7 @@ func testWrite(dataSize int, batchSize int, Separate bool, Sync bool, val string
 			point.Clean()
 		}
 	}
+	fun()
 	duration := time.Since(start)
 	ops := float64(dataSize) / duration.Seconds()
 	mbps := (float64(dataSize*(4+4+4+len(val)+10)) / (1024 * 1024)) / duration.Seconds()
@@ -133,11 +133,11 @@ func testWrite(dataSize int, batchSize int, Separate bool, Sync bool, val string
 	fmt.Printf("Write Speed: %.2f MB/s\n", mbps)
 }
 
-func getTestDBForParallelism(maxWriteParallelism int) (equinox.DB, func()) {
+func getTestDBForParallelism(maxWriteParallelism int, separate bool) (equinox.DB, func()) {
 	dir, _ := ioutil.TempDir("/Users/noorall/GolandProjects/equinox/benchmark/write/db", "equinox-test")
 	options := equinox.DefaultOptions(dir)
 	options.VFileWriteParallelism = maxWriteParallelism
-	options.ValueThreshold = 4 * 1024
+	options.Separate = separate
 	db, err := equinox.Open(options)
 	if err != nil {
 		panic(err)
@@ -150,27 +150,26 @@ func getTestDBForParallelism(maxWriteParallelism int) (equinox.DB, func()) {
 }
 
 func testWriteWithDifferentPointSize() {
-	data256, _ := generateRandomChars("256k")
-	data64, _ := generateRandomChars("64k")
-	data16, _ := generateRandomChars("16k")
+	//data256, _ := generateRandomChars("256k")
+	//data64, _ := generateRandomChars("64k")
+	//data16, _ := generateRandomChars("16k")
 	data4, _ := generateRandomChars("4k")
 	data1, _ := generateRandomChars("1k")
 	data256b, _ := generateRandomChars("256b")
 	data64b, _ := generateRandomChars("64b")
 
-	testWrite(40960, 1, true, true, data256)
-	testWrite(40960*4, 1, true, true, data64)
-	testWrite(40960*16, 1, true, true, data16)
-	testWrite(40960*64, 1, true, true, data4)
-	testWrite(40960*256, 1, true, true, data1)
-	testWrite(40960*1024, 1, true, true, data256b)
-	testWrite(40960*1024*4, 1, true, true, data64b)
+	//testWrite(40960, 1, true, true, data256)
+	//testWrite(40960*4, 1, true, true, data64)
+	//testWrite(40960*16, 1, true, true, data16)
+	//testWrite(40960*64, 1, true, true, data4)
+	//testWrite(40960*256, 1, true, true, data1)
+	//testWrite(40960*1024, 1, true, true, data256b)
+	//testWrite(40960*1024*4, 1, true, true, data64b)
 
-	testWrite(40960, 1, false, true, data256)
-	testWrite(40960*4, 1, false, true, data64)
-	testWrite(40960*16, 1, false, true, data16)
+	//testWrite(40960, 1, false, true, data256)
+	//testWrite(40960*4, 1, false, true, data64)
+	//testWrite(40960*16, 1, false, true, data16)
 	testWrite(40960*64, 1, false, true, data4)
-	//
 	testWrite(40960*256, 1, false, true, data1)
 	testWrite(40960*1024, 1, false, true, data256b)
 	testWrite(40960*1024*4, 1, false, true, data64b)
@@ -178,8 +177,7 @@ func testWriteWithDifferentPointSize() {
 
 func parallelismWrite(dataSize int, batchSize int, Separate bool, Sync bool, val string, writeParallelism int, client int) {
 	time.Sleep(5 * time.Second)
-	db, fun := getTestDBForParallelism(writeParallelism)
-	defer fun()
+	db, fun := getTestDBForParallelism(writeParallelism, Separate)
 	time.Sleep(5 * time.Second)
 
 	var wg sync.WaitGroup
@@ -207,7 +205,7 @@ func parallelismWrite(dataSize int, batchSize int, Separate bool, Sync bool, val
 	}
 
 	wg.Wait()
-
+	fun()
 	dataSize = dataSize * client
 	duration := time.Since(start)
 	ops := float64(dataSize) / duration.Seconds()
@@ -226,19 +224,21 @@ func testWriteWithDifferentWriteParallelism() {
 	data1, _ := generateRandomChars("1k")
 	data256b, _ := generateRandomChars("256b")
 	data64b, _ := generateRandomChars("64b")
-	parallelismWrite(40960, 1, true, true, data256, 1, 4)
-	parallelismWrite(40960, 1, true, true, data256, 2, 4)
-	parallelismWrite(40960, 1, true, true, data256, 3, 4)
-	parallelismWrite(40960, 1, true, true, data256, 4, 4)
+	parallelismWrite(40960, 1, true, true, data256, 1, 16)
+	parallelismWrite(40960, 1, true, true, data256, 2, 16)
+	parallelismWrite(40960, 1, true, true, data256, 3, 16)
+	parallelismWrite(40960, 1, true, true, data256, 4, 16)
+	parallelismWrite(40960, 1, true, true, data256, 5, 16)
+
 	return
-	for i := 1; i <= 32; i *= 2 {
-		parallelismWrite(40960, 1, true, true, data256, 1, i)
-		parallelismWrite(40960*4, 1, true, true, data64, 1, i)
-		parallelismWrite(40960*16, 1, true, true, data16, 1, i)
-		parallelismWrite(40960*64, 1, true, true, data4, 1, i)
-		parallelismWrite(40960*256, 1, true, true, data1, 1, i)
-		parallelismWrite(40960*1024, 1, true, true, data256b, 1, i)
-		parallelismWrite(40960*1024*4, 1, true, true, data64b, 1, i)
+	for i := 1; i <= 6; i++ {
+		parallelismWrite(40960, 1, true, true, data256, i, 4)
+		parallelismWrite(40960*4, 1, true, true, data64, i, 4)
+		parallelismWrite(40960*16, 1, true, true, data16, i, 4)
+		parallelismWrite(40960*64, 1, true, true, data4, i, 4)
+		parallelismWrite(40960*256, 1, true, true, data1, i, 4)
+		parallelismWrite(40960*1024, 1, true, true, data256b, i, 4)
+		parallelismWrite(40960*1024*4, 1, true, true, data64b, i, 4)
 		fmt.Printf("finish round: %d\n", i)
 	}
 
@@ -256,7 +256,7 @@ func testWriteWithDifferentWriteParallelism() {
 }
 
 func main() {
-	// testWriteWithDifferentPointSize()
+	testWriteWithDifferentPointSize()
 
-	testWriteWithDifferentWriteParallelism()
+	//testWriteWithDifferentWriteParallelism()
 }

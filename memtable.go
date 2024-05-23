@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 )
 
-const MemFileExt string = ".mem"
+const MemFileExt string = ".wal"
 
 type memTable struct {
 	skl *internel.Skiplist

@@ -182,7 +182,7 @@ func (v *valueLog) Write(batch *writeBatchInternel) error {
 	return nil
 }
 
-func (f *logFile) EncodeToVFile(key []byte, value EValue, buf *bytes.Buffer) (uint32, error) {
+func (f *logFile) EncodeToVFile(key []byte, value *EValue, buf *bytes.Buffer) (uint32, error) {
 	h := header{
 		klen:       uint32(len(key)),
 		vlen:       uint32(len(value.Value)),
@@ -209,7 +209,7 @@ func (f *logFile) EncodeToVFile(key []byte, value EValue, buf *bytes.Buffer) (ui
 	return uint32(sz + len(key) + len(value.Value) + crc32.Size), nil
 }
 
-func (v *valueLog) WriteValues(keys [][]byte, values []EValue, separateSize uint64) error {
+func (v *valueLog) WriteValues(keys [][]byte, values []*EValue, separateSize uint64, wg *sync.WaitGroup) error {
 	v.filesLock.RLock()
 	maxFid := v.maxFid
 	curLogFile := v.filesMap[maxFid]
@@ -249,9 +249,13 @@ func (v *valueLog) WriteValues(keys [][]byte, values []EValue, separateSize uint
 
 	v.numEntriesWritten += uint32(written)
 
-	if err := curLogFile.Sync(); err != nil {
-		v.logger.Errorf("Error Sync value log(%s): %+v", curLogFile.path, err)
-	}
+	go func() {
+		wg.Add(1)
+		defer wg.Done()
+		if err := curLogFile.Sync(); err != nil {
+			v.logger.Errorf("Error Sync value log(%s): %+v", curLogFile.path, err)
+		}
+	}()
 
 	return nil
 }
