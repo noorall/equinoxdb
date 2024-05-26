@@ -1068,7 +1068,7 @@ func subDoSeparate(keys [][]byte, values []*EValue, separateSizes []uint64, vFil
 		}
 		go func(vFile *valueLog) {
 			defer wg.Done()
-			err := vFile.WriteValues(keys[s:e], values[s:e], separateSize, bWg)
+			err := vFile.WriteValues(keys[s:e], values[s:e], separateSize, bWg, opts)
 			if err != nil {
 				opts.Logger.Errorf("Error writing values to file: %v", err)
 			}
@@ -1084,6 +1084,7 @@ func buildL0Table(mt *memTable, opts Options, vFiles []*valueLog) *TableBuilder 
 	defer iter.Close()
 	b := NewTableBuilder(opts)
 
+	write_points := uint64(0)
 	keys := make([][]byte, 0)
 	values := make([]*EValue, 0)
 	separateSize := make([]uint64, 0)
@@ -1108,9 +1109,11 @@ func buildL0Table(mt *memTable, opts Options, vFiles []*valueLog) *TableBuilder 
 			keys = append(keys, iter.Key())
 			values = append(values, vs.deepCopy())
 		}
+		write_points++
 	}
+	opts.Metric.RecordWritePoints(write_points)
 	//TODO remove this part
-	suf := opts.Metric.IncrWritePoints()
+	suf := opts.Metric.IncrWriteIdx()
 	for i := 0; i < len(keys); i++ {
 		keys[i] = append(append(ParseKey(keys[i]), []byte(strconv.Itoa(int(suf)))...), keys[i][len(keys[i])-8:]...)
 	}

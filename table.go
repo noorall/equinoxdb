@@ -621,7 +621,6 @@ func (b *TableBuilder) Add(key []byte, value EValue, valueLen uint32) {
 	if blk == nil {
 		return
 	}
-
 	b.fBlocks.blockList = append(b.fBlocks.blockList, blk)
 	if b.blockChan != nil {
 		b.blockChan <- blk

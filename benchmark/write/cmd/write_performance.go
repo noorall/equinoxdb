@@ -139,6 +139,8 @@ func getTestDBForParallelism(maxWriteParallelism int, separate bool) (equinox.DB
 	options := equinox.DefaultOptions(dir)
 	options.VFileWriteParallelism = maxWriteParallelism
 	options.Separate = separate
+	options.CompressionType = 0
+	options.Metric.Separate = separate
 	db, err := equinox.Open(options)
 	if err != nil {
 		panic(err)
@@ -254,10 +256,4 @@ func testWriteWithDifferentWriteParallelism() {
 	//parallelismWrite(40960*256, 1, true, true, data1, writeParallelism)
 	//parallelismWrite(40960*1024, 1, true, true, data256b, writeParallelism)
 	//parallelismWrite(40960*1024*4, 1, true, true, data64b, writeParallelism)
-}
-
-func main() {
-	//testWriteWithDifferentPointSize()
-
-	testWriteWithDifferentWriteParallelism()
 }

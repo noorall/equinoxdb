@@ -209,7 +209,7 @@ func (f *logFile) EncodeToVFile(key []byte, value *EValue, buf *bytes.Buffer) (u
 	return uint32(sz + len(key) + len(value.Value) + crc32.Size), nil
 }
 
-func (v *valueLog) WriteValues(keys [][]byte, values []*EValue, separateSize uint64, wg *sync.WaitGroup) error {
+func (v *valueLog) WriteValues(keys [][]byte, values []*EValue, separateSize uint64, wg *sync.WaitGroup, opts Options) error {
 	v.filesLock.RLock()
 	maxFid := v.maxFid
 	curLogFile := v.filesMap[maxFid]
@@ -240,6 +240,7 @@ func (v *valueLog) WriteValues(keys [][]byte, values []*EValue, separateSize uin
 		}
 		// atomic update the offset, allow the concurrently write entry to the same log file
 		atomic.AddUint32(&v.writableLogOffset, plen)
+		opts.Metric.RecordWriteBytes(uint64(len(buf.Bytes())))
 		err = curLogFile.WriteEntryFrom(buf)
 		p.len = plen
 		value.Value = p.Encode()

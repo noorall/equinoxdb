@@ -38,6 +38,7 @@ func (l *level) Init(tables []*Table) {
 	l.tables = tables
 	for _, table := range tables {
 		l.totalSize += table.Size()
+		l.opts.Metric.RecordWriteBytes(uint64(table.Size()))
 	}
 
 	if l.id == 0 {
@@ -66,6 +67,8 @@ func (l *level) Add(table *Table) bool {
 
 	l.totalSize += table.Size()
 	table.IncrRef()
+
+	l.opts.Metric.RecordWriteBytes(uint64(table.Size()))
 
 	l.tables = append(l.tables, table)
 
@@ -143,6 +146,7 @@ func (l *level) Replace(delTables, addTables []*Table) error {
 		l.totalSize += table.Size()
 		table.IncrRef()
 		newTables = append(newTables, table)
+		l.opts.Metric.RecordWriteBytes(uint64(table.Size()))
 	}
 
 	l.tables = newTables
