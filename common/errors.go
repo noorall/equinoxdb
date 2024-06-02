@@ -16,8 +16,10 @@
  * limitations under the License.
  */
 
-package utils
+package equinox
 
-type BatchWriter interface {
-	Put(timestamp uint64) error
-}
+import "errors"
+
+var (
+	ErrFieldTypeConflict = errors.New("field types conflict")
+)

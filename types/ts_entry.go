@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package data_type
+package equinox
 
 import (
 	"encoding/binary"

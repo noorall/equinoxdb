@@ -163,7 +163,7 @@ func (r *entryReader) read(reader io.Reader) (*entry, error) {
 }
 
 // When the size of a value exceed the writeoptions.maxValueThreshold, a valPtr will be generated.
-// Then the value will store in the lsm file, but valPtr will store in a value log.
+// Then the value will storage in the lsm file, but valPtr will storage in a value log.
 type valPtr struct {
 	fid    uint32
 	len    uint32
@@ -195,7 +195,7 @@ type logFile struct {
 	path string
 	lock sync.RWMutex
 
-	*internel.MmapFile
+	*internel.MMapFile
 }
 
 func (f *logFile) Open(path string, flags int, size int) error {
@@ -205,7 +205,7 @@ func (f *logFile) Open(path string, flags int, size int) error {
 		return Wrapf(err, "while opening file: %s", path)
 	}
 
-	f.MmapFile = mmf
+	f.MMapFile = mmf
 	f.size = uint32(len(f.Data))
 	if mmf.NewFile {
 		f.size = 0
@@ -223,7 +223,7 @@ func (f *logFile) Truncate(end int64) error {
 	}
 
 	f.size = uint32(end)
-	return f.MmapFile.Truncate(end)
+	return f.MMapFile.Truncate(end)
 }
 
 func (f *logFile) EncodeEntryTo(e *entry, buf *bytes.Buffer) (uint32, error) {

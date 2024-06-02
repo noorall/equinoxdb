@@ -180,7 +180,7 @@ func TestTableChecksum(t *testing.T) {
 
 	require.Panics(t, func() {
 		// Either OpenTable will panic on corrupted data or the checksum verification will fail.
-		_, err := OpenTable(tbl.MmapFile, opts)
+		_, err := OpenTable(tbl.MMapFile, opts)
 		if strings.Contains(err.Error(), "checksum") {
 			panic("checksum mismatch")
 		}

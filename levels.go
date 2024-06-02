@@ -552,7 +552,7 @@ func (ls *levels) doCompact(compactId int, cp compactionPriority) error {
 	defer ls.cstatus.Delete(ci)
 
 	if err := ls.compact(compactId, lid, ci); err != nil {
-		ls.opts.Logger.Warningf("[Compact: %d] LOG Compact FAILED with error: %+v: %+v",
+		ls.opts.Logger.Warningf("[Compact: %d] LOG Compact FAILED with errs: %+v: %+v",
 			compactId, err, ci)
 		return err
 	}
@@ -704,7 +704,7 @@ func (ls *levels) buildNewTables(levelId int, ci compactInfo) ([]*Table, func() 
 		err = syncDir(ls.opts.Dir)
 	}
 
-	// there is an error happened. So Delete all the newly created table files
+	// there is an errs happened. So Delete all the newly created table files
 	// (by calling DecrRef because new table only has one ref).
 	if err != nil {
 		_ = decrRefs(newTables)

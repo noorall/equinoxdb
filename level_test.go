@@ -33,7 +33,7 @@ func mockTable(id, size int, dir string) *Table {
 		panic(err)
 	}
 
-	t.MmapFile = mf
+	t.MMapFile = mf
 
 	t.IncrRef()
 	return &t

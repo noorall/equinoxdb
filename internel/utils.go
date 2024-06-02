@@ -28,7 +28,7 @@ func NewHashReader(r io.Reader) *HashReader {
 	}
 }
 
-// Read reads len(p) bytes from the reader. Returns the number of bytes read, error on failure.
+// Read reads len(p) bytes from the reader. Returns the number of bytes read, errs on failure.
 func (t *HashReader) Read(p []byte) (int, error) {
 	n, err := t.r.Read(p)
 	if err != nil {
@@ -39,7 +39,7 @@ func (t *HashReader) Read(p []byte) (int, error) {
 	return t.h.Write(p[:n])
 }
 
-// ReadByte reads exactly one byte from the reader. Returns error on failure.
+// ReadByte reads exactly one byte from the reader. Returns errs on failure.
 func (t *HashReader) ReadByte() (byte, error) {
 	b := make([]byte, 1)
 	_, err := t.Read(b)
@@ -178,7 +178,7 @@ func NewThrottle(max int) *Throttle {
 }
 
 // Do should be called by workers before they start working. It blocks if there
-// are already maximum number of workers working. If it detects an error from
+// are already maximum number of workers working. If it detects an errs from
 // previously Done workers, it would return it.
 func (t *Throttle) Do() error {
 	for {
@@ -195,7 +195,7 @@ func (t *Throttle) Do() error {
 }
 
 // Done should be called by workers when they finish working. They can also
-// pass the error status of work done.
+// pass the errs status of work done.
 func (t *Throttle) Done(err error) {
 	if err != nil {
 		t.errs <- err
@@ -210,9 +210,9 @@ func (t *Throttle) Done(err error) {
 	t.wg.Done()
 }
 
-// Finish waits until all workers have finished working. It would return any error passed by Done.
+// Finish waits until all workers have finished working. It would return any errs passed by Done.
 // If Finish is called multiple time, it will wait for workers to finish only once(first time).
-// From next calls, it will return same error as found on first call.
+// From next calls, it will return same errs as found on first call.
 func (t *Throttle) Finish() error {
 	t.one.Do(func() {
 		t.wg.Wait()

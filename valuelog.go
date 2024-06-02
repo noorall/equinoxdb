@@ -578,7 +578,7 @@ func (v *valueLog) selectGCFile(ratio float64) *logFile {
 
 	f, err := lf.Fd.Stat()
 	if err != nil {
-		v.logger.Errorf("Unable to get stats for value log fid: %d err: %+v", f, err)
+		v.logger.Errorf("Unable to get stats for value log fid: %d errs: %+v", f, err)
 		return nil
 	}
 
@@ -638,7 +638,7 @@ func (v *valueLog) gcLogFile(lf *logFile, db DB) error {
 			return nil
 		}
 
-		// lsm store the key with value. Discard.
+		// lsm storage the key with value. Discard.
 		if ev.Meta&ValPtr == 0 {
 			return nil
 		}

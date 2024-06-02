@@ -10,13 +10,13 @@ import (
 
 const RW_ = 0666
 
-type MmapFile struct {
+type MMapFile struct {
 	Data    []byte
 	Fd      *os.File
 	NewFile bool // if a file is created when it open, this is true
 }
 
-func OpenMmapFile(filename string, flag int, max int) (*MmapFile, error) {
+func OpenMmapFile(filename string, flag int, max int) (*MMapFile, error) {
 	fd, err := os.OpenFile(filename, flag, RW_)
 
 	if err != nil {
@@ -26,7 +26,7 @@ func OpenMmapFile(filename string, flag int, max int) (*MmapFile, error) {
 	return OpenMmapFileWithFD(fd, flag, max)
 }
 
-func OpenMmapFileWithFD(fd *os.File, flag int, max int) (*MmapFile, error) {
+func OpenMmapFileWithFD(fd *os.File, flag int, max int) (*MMapFile, error) {
 	stat, err := fd.Stat()
 
 	if err != nil {
@@ -62,7 +62,7 @@ func OpenMmapFileWithFD(fd *os.File, flag int, max int) (*MmapFile, error) {
 		go dsync(dir)
 	}
 
-	return &MmapFile{
+	return &MMapFile{
 		Data:    buf,
 		Fd:      fd,
 		NewFile: newFile,
@@ -88,11 +88,11 @@ func (r *reader) Read(buf []byte) (int, error) {
 	return n, nil
 }
 
-func (m *MmapFile) NewReader(offset int) io.Reader {
+func (m *MMapFile) NewReader(offset int) io.Reader {
 	return &reader{data: m.Data, offset: offset}
 }
 
-func (m *MmapFile) Truncate(size int64) error {
+func (m *MMapFile) Truncate(size int64) error {
 	if m.Fd == nil {
 		return nil
 	}
@@ -114,7 +114,7 @@ func (m *MmapFile) Truncate(size int64) error {
 	return err
 }
 
-func (m *MmapFile) Delete() error {
+func (m *MMapFile) Delete() error {
 	if m.Fd == nil {
 		return nil
 	}
@@ -136,7 +136,7 @@ func (m *MmapFile) Delete() error {
 	return os.Remove(m.Fd.Name())
 }
 
-func (m *MmapFile) Close() error {
+func (m *MMapFile) Close() error {
 	if m.Fd == nil {
 		return nil
 	}
@@ -152,7 +152,7 @@ func (m *MmapFile) Close() error {
 	return m.Fd.Close()
 }
 
-func (m *MmapFile) CloseWithTruncate(size int64) error {
+func (m *MMapFile) CloseWithTruncate(size int64) error {
 	if m.Fd == nil {
 		return nil
 	}
@@ -174,7 +174,7 @@ func (m *MmapFile) CloseWithTruncate(size int64) error {
 	return m.Fd.Close()
 }
 
-func (m *MmapFile) Sync() error {
+func (m *MMapFile) Sync() error {
 	if m.Fd == nil {
 		return nil
 	}

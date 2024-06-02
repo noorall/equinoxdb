@@ -154,7 +154,7 @@ func (b *blockBuilder) Add(key []byte, value EValue, valueLen uint32) *fileBlock
 	AssertTrue(len(key)-len(diffKey) <= math.MaxUint16)
 	AssertTrue(len(diffKey) <= math.MaxUint16)
 
-	// store current entry's offset
+	// storage current entry's offset
 	b.curBlock.entryOffsets = append(b.curBlock.entryOffsets, uint32(b.curBlock.end))
 	// append entry header
 	h := &fileEntryHeader{

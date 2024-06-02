@@ -1,8 +1,9 @@
-package equinox
+package storage
 
 import (
 	"bytes"
 	"equinox/internel"
+	equinox "equinox/types"
 	"fmt"
 	"math"
 	"os"
@@ -13,15 +14,15 @@ const MemFileExt string = ".wal"
 
 type memTable struct {
 	skl *internel.Skiplist
-	wal *logFile
+	wal *wal
 	buf *bytes.Buffer
 
-	option     Options
+	option     equinox.Options
 	maxVersion uint64
 	NewTable   bool
 }
 
-func NewMemTable(id int, option Options) (*memTable, error) {
+func NewMemTable(id int, option equinox.Options) (*memTable, error) {
 	mt, err := OpenMemTable(id, os.O_CREATE|os.O_RDWR, option)
 	if err == nil && mt.NewTable {
 		return mt, nil
@@ -34,7 +35,7 @@ func NewMemTable(id int, option Options) (*memTable, error) {
 	return nil, fmt.Errorf("file %s already exists", mt.wal.Fd.Name())
 }
 
-func OpenMemTable(fid, flags int, option Options) (*memTable, error) {
+func OpenMemTable(fid, flags int, option equinox.Options) (*memTable, error) {
 	filePath := memTableFilePath(option.Dir, fid)
 	skl := internel.NewSkiplist(arenaSize(option), option.comparator)
 	mt := &memTable{
@@ -143,7 +144,7 @@ func memTableFilePath(dir string, fid int) string {
 	return filepath.Join(dir, fmt.Sprintf("%05d%s", fid, MemFileExt))
 }
 
-func arenaSize(option Options) uint32 {
+func arenaSize(option equinox.Options) uint32 {
 	sz := int64(option.MemTableSize + option.maxBatchSize +
 		option.maxBatchCount*internel.MaxNodeSize)
 

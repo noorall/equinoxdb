@@ -124,7 +124,7 @@ func (t *tableIndex) Decode(buf []byte) {
 
 type Table struct {
 	sync.Mutex
-	*internel.MmapFile
+	*internel.MMapFile
 
 	tableSize uint32 // Initialized in OpenTable, using fd.Stat().
 
@@ -166,7 +166,7 @@ func CreateTable(fname string, builder *TableBuilder) (*Table, error) {
 	return OpenTable(mf, *builder.opts)
 }
 
-func OpenTable(mf *internel.MmapFile, opts Options) (*Table, error) {
+func OpenTable(mf *internel.MMapFile, opts Options) (*Table, error) {
 	if opts.BlockSize == 0 && opts.CompressionType != NoCompression {
 		return nil, errors.New("Block size cannot be zero")
 	}
@@ -185,7 +185,7 @@ func OpenTable(mf *internel.MmapFile, opts Options) (*Table, error) {
 	}
 
 	t := &Table{
-		MmapFile:   mf,
+		MMapFile:   mf,
 		ref:        1, // Caller is given one reference.
 		id:         id,
 		opt:        &opts,
@@ -209,12 +209,12 @@ func OpenTable(mf *internel.MmapFile, opts Options) (*Table, error) {
 }
 
 func OpenInMemoryTable(data []byte, id uint64, opt *Options) (*Table, error) {
-	mf := &internel.MmapFile{
+	mf := &internel.MMapFile{
 		Data: data,
 		Fd:   nil,
 	}
 	t := &Table{
-		MmapFile:   mf,
+		MMapFile:   mf,
 		ref:        1, // Caller is given one reference.
 		opt:        opt,
 		tableSize:  uint32(len(data)),

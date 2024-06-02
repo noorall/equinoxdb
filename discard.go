@@ -19,7 +19,7 @@ type discard struct {
 	next int
 
 	sync.Mutex // because the difference reader and writer
-	*internel.MmapFile
+	*internel.MMapFile
 }
 
 func NewDiscard(option Options) (*discard, error) {
@@ -32,7 +32,7 @@ func NewDiscard(option Options) (*discard, error) {
 	}
 
 	d := &discard{
-		MmapFile: m,
+		MMapFile: m,
 	}
 
 	if m.NewFile {

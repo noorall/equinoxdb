@@ -51,7 +51,7 @@ func (m *Manifest) toChanges() manifestChanges {
 
 func (m *Manifest) clone() Manifest {
 	res := NewManifest()
-	// just copy, no error
+	// just copy, no errs
 	_ = applyManifestChanges(&res, m.toChanges())
 
 	return res

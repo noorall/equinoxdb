@@ -3,8 +3,8 @@ package equinox
 import (
 	"bytes"
 	"context"
-	"equinox/data_type"
 	"equinox/internel"
+	"equinox/types"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -34,7 +34,7 @@ type DB interface {
 	GetExtend(options *ReadOptions, key []byte) (value *EValue, err error)
 	GetOption() Options
 	Close() error
-	TSWrite(options *WriteOptions, points []data_type.TSEntry) error
+	TSWrite(options *WriteOptions, points []types.TSEntry) error
 }
 
 // closers for those goroutines that need run backgroud when DB opened.
@@ -102,7 +102,7 @@ func Open(options Options) (DB, error) {
 		return nil, Wrapf(err, "acquire dir(%q) lock failed, when open db.", options.Dir)
 	}
 
-	// if any error found during db open, release the lock.
+	// if any errs found during db open, release the lock.
 	defer func() {
 		if dirLockGuard != nil {
 			_ = dirLockGuard.Release()
@@ -119,7 +119,7 @@ func Open(options Options) (DB, error) {
 	}
 
 	var valueDirLockGuard *internel.DirLockGuard
-	// value log file isn't store with sst tables.
+	// value log file isn't storage with sst tables.
 	// so lock value log dir too.
 	if absDir != absValueLogDir {
 		valueDirLockGuard, err = internel.AcquireDirLock(options.ValueLogDir, lockFile)
@@ -127,7 +127,7 @@ func Open(options Options) (DB, error) {
 			return nil, err
 		}
 
-		// if any error found during db open, release the lock.
+		// if any errs found during db open, release the lock.
 		defer func() {
 			if valueDirLockGuard != nil {
 				_ = valueDirLockGuard.Release()
@@ -140,7 +140,7 @@ func Open(options Options) (DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	// if any error found during db open, close the manifest file.
+	// if any errs found during db open, close the manifest file.
 	defer func() {
 		if manifestFile != nil {
 			_ = manifestFile.Close()
@@ -163,10 +163,10 @@ func Open(options Options) (DB, error) {
 		vlogs:         make([]*valueLog, 0),
 	}
 
-	// Cleanup all the goroutines started by badger in case of an error.
+	// Cleanup all the goroutines started by badger in case of an errs.
 	defer func() {
 		if err != nil {
-			options.Logger.Errorf("while opening db, got an err: %v. Cleaning up...", err)
+			options.Logger.Errorf("while opening db, got an errs: %v. Cleaning up...", err)
 			db.cleanup()
 			db = nil
 		}
@@ -308,7 +308,7 @@ func Close(db DB) error {
 // space reclaims, while setting it to a lower value would result in more space
 // reclaims at the cost of increased activity on the LSM tree. discardRatio
 // must be in the range (0.0, 1.0), both endpoints excluded, otherwise an
-// error is returned.
+// errs is returned.
 //
 // Only one GC is allowed at a time. If another value log GC is running, or DB
 // has been closed, this would return an ErrRejected.
@@ -370,7 +370,7 @@ func (db *DBImpl) Write(options *WriteOptions, batch *WriteBatch) error {
 	return nil
 }
 
-func (db *DBImpl) TSWrite(options *WriteOptions, points []data_type.TSEntry) error {
+func (db *DBImpl) TSWrite(options *WriteOptions, points []types.TSEntry) error {
 	if len(points) == 0 {
 		return ErrEmptyKey
 	}
@@ -767,7 +767,7 @@ func (db *DBImpl) doWrites(c *internel.Closer) {
 	pendingCh := make(chan struct{}, 1)
 	write := func(batches []*writeBatchInternel) {
 		if err := db.writeBatches(batches); err != nil {
-			db.option.Logger.Errorf("write batch err: %+v", err)
+			db.option.Logger.Errorf("write batch errs: %+v", err)
 		}
 
 		<-pendingCh
@@ -841,9 +841,9 @@ func (db *DBImpl) writeBatches(batches []*writeBatchInternel) error {
 	//}
 	//
 	//for _, batch := range batches {
-	//	if err := currentVlog.Write(batch); err != nil {
-	//		done(err)
-	//		return err
+	//	if errs := currentVlog.Write(batch); errs != nil {
+	//		done(errs)
+	//		return errs
 	//	}
 	//}
 
@@ -991,7 +991,7 @@ func (db *DBImpl) flushMemTable(c *internel.Closer) error {
 			continue
 		}
 
-		// If an error occurs during flushing, continue flushing until it is successful.
+		// If an errs occurs during flushing, continue flushing until it is successful.
 		for {
 			err := db.doFlush(mt)
 			if err == nil {
@@ -1004,7 +1004,7 @@ func (db *DBImpl) flushMemTable(c *internel.Closer) error {
 				break
 			}
 
-			// Encountered error. Retry indefinitely.
+			// Encountered errs. Retry indefinitely.
 			db.option.Logger.Errorf("Failure while flushing memtable to disk: %v. Retrying...\n",
 				err)
 			time.Sleep(time.Second)
@@ -1565,7 +1565,7 @@ func (db *DBImpl) GetSampleKeys(sampleSize, numGoroutines int) ([][]byte, error)
 	close(keysCh)
 
 	select {
-	case err := <-errCh: // Check error from getKeys.
+	case err := <-errCh: // Check errs from getKeys.
 		return nil, err
 	default:
 	}
@@ -1574,7 +1574,9 @@ func (db *DBImpl) GetSampleKeys(sampleSize, numGoroutines int) ([][]byte, error)
 }
 
 type EValue struct {
-	Meta  byte
+	// 元数据信息 删除、新增、指针
+	Meta byte
+	// 二进制数据
 	Value []byte
 
 	version uint64 // not decode or encode

@@ -1,7 +1,7 @@
 package equinox
 
 import (
-	"equinox/data_type"
+	"equinox/types"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -263,7 +263,7 @@ func (db *mockDB) Close() error {
 	return nil
 }
 
-func (db *mockDB) TSWrite(options *WriteOptions, points []data_type.TSEntry) error {
+func (db *mockDB) TSWrite(options *WriteOptions, points []types.TSEntry) error {
 	return nil
 }
 
