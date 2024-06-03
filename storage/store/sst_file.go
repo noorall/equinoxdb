@@ -17,3 +17,54 @@
  */
 
 package store
+
+import (
+	"equinox/storage/types"
+	"io"
+)
+
+const (
+	SSTFileExtension = "sst"
+)
+
+type SSTWriter interface {
+	Write(key []byte, values types.Values) error
+
+	WriteBlock(key []byte, minTime, maxTime int64, block []byte) error
+
+	WriteIndex() error
+
+	Flush() error
+
+	Close() error
+
+	Size() uint32
+
+	Remove() error
+}
+
+type IndexWriter interface {
+	Add(key []byte, blockType byte, minTime, maxTime int64, offset int64, size uint32)
+
+	Entries(key []byte) []IndexEntry
+
+	KeyCount() int
+
+	Size() uint32
+
+	MarshalBinary() ([]byte, error)
+
+	WriteTo(w io.Writer) (int64, error)
+
+	Close() error
+
+	Remove() error
+}
+
+type IndexEntry struct {
+	MinTime, MaxTime int64
+
+	Offset int64
+
+	Size uint32
+}

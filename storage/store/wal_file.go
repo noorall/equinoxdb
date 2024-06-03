@@ -499,10 +499,10 @@ func (w *DeleteRangeWALEntry) Type() WalEntryType {
 	return DeleteRangeWALEntryType
 }
 
-type walFile struct {
+type WalFile struct {
 	fid  uint32
 	size uint32 // so the max size of a wal file will not exceed 4 GB
-	pos  uint32
+	Pos  uint32
 
 	path string
 	lock sync.RWMutex
@@ -510,12 +510,18 @@ type walFile struct {
 	*internel.MMapFile
 }
 
-func (f *walFile) Open(dir string, fid int, flags int, size int) error {
-	path := walFilePath(dir, fid)
-	mmf, err := internel.OpenMmapFile(path, flags, size)
+func NewWalFile(fid int, dir string) *WalFile {
+	return &WalFile{
+		fid:  uint32(fid),
+		path: walFilePath(dir, fid),
+	}
+}
+
+func (f *WalFile) Open(flags int, size int) error {
+	mmf, err := internel.OpenMmapFile(f.path, flags, size)
 
 	if err != nil {
-		return errs.Errorf(err, "while opening file: %s", path)
+		return errs.Errorf(err, "while opening file: %s", f.path)
 	}
 
 	f.MMapFile = mmf
@@ -527,7 +533,7 @@ func (f *walFile) Open(dir string, fid int, flags int, size int) error {
 	return nil
 }
 
-func (f *walFile) Truncate(end int64) error {
+func (f *WalFile) Truncate(end int64) error {
 	if fs, err := f.Fd.Stat(); err != nil {
 		return errs.Errorf(err, "while get stat from file: %s", f.path)
 	} else if fs.Size() == end {
@@ -538,7 +544,7 @@ func (f *walFile) Truncate(end int64) error {
 	return f.MMapFile.Truncate(end)
 }
 
-func (f *walFile) Flush(offset uint32) error {
+func (f *WalFile) Flush(offset uint32) error {
 	if err := f.Sync(); err != nil {
 		return errs.Errorf(err, "sync file: %s", f.path)
 	}
@@ -553,7 +559,7 @@ func (f *walFile) Flush(offset uint32) error {
 	return nil
 }
 
-func (f *walFile) WriteMulti(values map[string][]types.Value) error {
+func (f *WalFile) WriteMulti(values map[string][]types.Value) error {
 	entry := &WriteWALEntry{
 		Values: values,
 	}
@@ -566,8 +572,8 @@ func (f *walFile) WriteMulti(values map[string][]types.Value) error {
 	return nil
 }
 
-// Delete deletes the given keys, returning the segment ID for the operation.
-func (f *walFile) Delete(keys [][]byte) error {
+// Remove the given keys
+func (f *WalFile) Remove(keys [][]byte) error {
 	if len(keys) == 0 {
 		return nil
 	}
@@ -582,9 +588,9 @@ func (f *walFile) Delete(keys [][]byte) error {
 	return nil
 }
 
-// DeleteRange deletes the given keys within the given time range,
+// RemoveRange deletes the given keys within the given time range,
 // returning the segment ID for the operation.
-func (f *walFile) DeleteRange(keys [][]byte, min, max int64) error {
+func (f *WalFile) RemoveRange(keys [][]byte, min, max int64) error {
 	if len(keys) == 0 {
 		return nil
 	}
@@ -601,7 +607,7 @@ func (f *walFile) DeleteRange(keys [][]byte, min, max int64) error {
 	return nil
 }
 
-func (f *walFile) writeEntryToWal(entry WALEntry) error {
+func (f *WalFile) writeEntryToWal(entry WALEntry) error {
 	data := bytesPool.Get(entry.MarshalSize())
 	defer bytesPool.Put(data)
 
@@ -632,9 +638,9 @@ func (f *walFile) writeEntryToWal(entry WALEntry) error {
 	return nil
 }
 
-func (f *walFile) write(data []byte) error {
+func (f *WalFile) write(data []byte) error {
 	n := len(data)
-	newPos := atomic.AddUint32(&f.pos, uint32(n))
+	newPos := atomic.AddUint32(&f.Pos, uint32(n))
 
 	if int(newPos) >= len(f.Data) {
 		if err := f.Truncate(int64(newPos)); err != nil {

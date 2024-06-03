@@ -16,6 +16,7 @@ const (
 	NoCompression CompressionType = iota
 	SnappyCompression
 	ZSTDCompression
+	DefaultMaxPointsPerBlock = 1000
 )
 
 var (
@@ -36,7 +37,7 @@ type Option func(*Options)
 type Options struct {
 	Dir             string
 	CompressionType CompressionType
-	comparator      Comparator // internel use only
+	Comparator      Comparator // internel use only
 	// Logger
 	Logger internel.Logger
 
@@ -114,7 +115,7 @@ func DefaultOptions(dir string) Options {
 		CompressionType:      SnappyCompression,
 		ZSTDCompressionLevel: 1,
 
-		comparator:          CompareKeys,
+		Comparator:          CompareKeys,
 		Logger:              internel.DefaultLogger(internel.INFO),
 		VerifyTableChecksum: false,
 		Separate:            true,

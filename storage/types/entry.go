@@ -29,9 +29,9 @@ type Entry struct {
 	vType  byte
 }
 
-// newEntryValues returns a new instance of Entry with the given values.  If the
+// NewEntryValues returns a new instance of Entry with the given values.  If the
 // values are not valid, an errs is returned.
-func newEntryValues(values []Value) (*Entry, error) {
+func NewEntryValues(values []Value) (*Entry, error) {
 	e := &Entry{}
 	e.values = make(Values, 0, len(values))
 	e.values = append(e.values, values...)
@@ -55,8 +55,8 @@ func newEntryValues(values []Value) (*Entry, error) {
 	return e, nil
 }
 
-// add adds the given values to the Entry.
-func (e *Entry) add(values []Value) error {
+// Add adds the given values to the Entry.
+func (e *Entry) Add(values []Value) error {
 	if len(values) == 0 {
 		return nil // Nothing to do.
 	}
@@ -85,9 +85,9 @@ func (e *Entry) add(values []Value) error {
 	return nil
 }
 
-// deduplicate sorts and orders the Entry's values. If values are already deduped and sorted,
+// Deduplicate sorts and orders the Entry's values. If values are already deduped and sorted,
 // the function does no work and simply returns.
-func (e *Entry) deduplicate() {
+func (e *Entry) Deduplicate() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -97,16 +97,16 @@ func (e *Entry) deduplicate() {
 	e.values = e.values.Deduplicate()
 }
 
-// count returns the number of values in this Entry.
-func (e *Entry) count() int {
+// Count returns the number of values in this Entry.
+func (e *Entry) Count() int {
 	e.mu.RLock()
 	n := len(e.values)
 	e.mu.RUnlock()
 	return n
 }
 
-// filter removes all values with timestamps between min and max inclusive.
-func (e *Entry) filter(min, max int64) {
+// Filter removes all values with timestamps between min and max inclusive.
+func (e *Entry) Filter(min, max int64) {
 	e.mu.Lock()
 	if len(e.values) > 1 {
 		e.values = e.values.Deduplicate()
@@ -115,10 +115,20 @@ func (e *Entry) filter(min, max int64) {
 	e.mu.Unlock()
 }
 
-// size returns the size of this Entry in bytes.
-func (e *Entry) size() int {
+// Size returns the size of this Entry in bytes.
+func (e *Entry) Size() int {
 	e.mu.RLock()
 	sz := e.values.Size()
 	e.mu.RUnlock()
 	return sz
+}
+
+func (e *Entry) Clean() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.values = e.values[:0]
+}
+
+func (e *Entry) Values() Values {
+	return e.values
 }

@@ -18,6 +18,8 @@
 
 package types
 
+import "encoding/binary"
+
 const (
 	valueTypeUndefined = 0
 	valueTypeFloat64   = 1
@@ -42,4 +44,24 @@ func valueType(v Value) byte {
 	default:
 		return valueTypeUndefined
 	}
+}
+
+func packBlock(buf []byte, typ byte, ts []byte, values []byte) []byte {
+	// We encode the length of the timestamp block using a variable byte encoding.
+	// This allows small byte slices to take up 1 byte while larger ones use 2 or more.
+	sz := 1 + binary.MaxVarintLen64 + len(ts) + len(values)
+	if cap(buf) < sz {
+		buf = make([]byte, sz)
+	}
+	b := buf[:sz]
+	b[0] = typ
+	i := binary.PutUvarint(b[1:1+binary.MaxVarintLen64], uint64(len(ts)))
+	i += 1
+
+	// block is <len timestamp bytes>, <ts bytes>, <value bytes>
+	copy(b[i:], ts)
+	// We don't encode the value length because we know it's the rest of the block after
+	// the timestamp block.
+	copy(b[i+len(ts):], values)
+	return b[:i+len(ts)+len(values)]
 }

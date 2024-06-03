@@ -16,35 +16,17 @@
  * limitations under the License.
  */
 
-package types
+package storage
 
-const (
-	// BlockFloat64 designates a block encodes float64 values.
-	BlockFloat64 = byte(0)
-
-	// BlockInteger designates a block encodes int64 values.
-	BlockInteger = byte(1)
-
-	// BlockBoolean designates a block encodes boolean values.
-	BlockBoolean = byte(2)
-
-	// BlockString designates a block encodes string values.
-	BlockString = byte(3)
-
-	// BlockUnsigned designates a block encodes uint64 values.
-	BlockUnsigned = byte(4)
-
-	// encodedBlockHeaderSize is the size of the header for an encoded block.  There is one
-	// byte encoding the type of the block.
-	encodedBlockHeaderSize = 1
+import (
+	"fmt"
+	"path/filepath"
 )
 
-type Value interface {
-	UnixNano() int64
+const (
+	WALFileExtension = "wal"
+)
 
-	Value() interface{}
-
-	Size() int
-
-	String() string
+func walFilePath(dir string, fid int) string {
+	return filepath.Join(dir, fmt.Sprintf("%05d%s", fid, WALFileExtension))
 }

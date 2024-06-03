@@ -1,62 +1,77 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package storage
 
 import (
 	"bytes"
-	"equinox/internel"
+	"equinox/storage/errs"
+	"equinox/storage/store"
+	"equinox/storage/types"
 	equinox "equinox/types"
 	"fmt"
+	"log"
 	"math"
 	"os"
-	"path/filepath"
 )
 
-const MemFileExt string = ".wal"
-
-type memTable struct {
-	skl *internel.Skiplist
-	wal *wal
-	buf *bytes.Buffer
+type MemTable struct {
+	cache *Cache
+	wal   *store.WalFile
+	buf   *bytes.Buffer
 
 	option     equinox.Options
 	maxVersion uint64
 	NewTable   bool
 }
 
-func NewMemTable(id int, option equinox.Options) (*memTable, error) {
+func NewMemTable(id int, option equinox.Options) (*MemTable, error) {
 	mt, err := OpenMemTable(id, os.O_CREATE|os.O_RDWR, option)
 	if err == nil && mt.NewTable {
 		return mt, nil
 	}
 
 	if err != nil {
-		return nil, Wrapf(err, "create a new memtable: %s", mt.wal.Fd.Name())
+		return nil, errs.Errorf(err, "create a new memtable: %s", mt.wal.Fd.Name())
 	}
 
 	return nil, fmt.Errorf("file %s already exists", mt.wal.Fd.Name())
 }
 
-func OpenMemTable(fid, flags int, option equinox.Options) (*memTable, error) {
-	filePath := memTableFilePath(option.Dir, fid)
-	skl := internel.NewSkiplist(arenaSize(option), option.comparator)
-	mt := &memTable{
-		skl:    skl,
+func OpenMemTable(fid, flags int, option equinox.Options) (*MemTable, error) {
+	cache := NewCache(option.Comparator)
+
+	mt := &MemTable{
+		cache:  cache,
 		option: option,
 		buf:    &bytes.Buffer{},
 	}
 
-	mt.wal = &logFile{
-		fid:  uint32(fid),
-		path: filePath,
-	}
+	mt.wal = store.NewWalFile(fid, option.Dir)
 
-	err := mt.wal.Open(filePath, flags, 2*option.MemTableSize)
+	err := mt.wal.Open(flags, 2*option.MemTableSize)
 	if err != nil {
-		return nil, Wrapf(err, "while opening memtable: %s", filePath)
+		return nil, errs.Errorf(err, "while opening memtable: %d", fid)
 	}
 
-	skl.Hanlder = func() {
-		if err := mt.wal.Delete(); err != nil {
-			option.Logger.Errorf("while deleting file: %s, errs: %v", filePath, err)
+	cache.Handler = func() {
+		if err = mt.wal.Delete(); err != nil {
+			option.Logger.Errorf("while deleting file: %d, errs: %v", fid, err)
 		}
 	}
 
@@ -68,89 +83,96 @@ func OpenMemTable(fid, flags int, option equinox.Options) (*memTable, error) {
 	// restore from wal
 	err = mt.restoreFromWAL()
 
-	return mt, Wrap(err, "while restore from wal file")
+	return mt, errs.Error(err, "while restore from wal file")
 }
 
-func (m *memTable) Put(key []byte, value EValue) error {
-	e := &entry{
-		key:   key,
-		value: value.Value,
-		rtype: value.Meta,
+func (m *MemTable) WriteMulti(values map[string][]types.Value) error {
+	var addedSize uint64
+	for _, v := range values {
+		addedSize += uint64(types.Values(v).Size())
 	}
 
-	// TODO may be cause a concurrent writes problem, because use a errs buf
-	if err := m.wal.WriteEntry(e, m.buf); err != nil {
-		return Wrap(err, "cannot write entry to WAL file")
+	if err := m.wal.WriteMulti(values); err != nil {
+		return errs.Errorf(err, "while writing values to wal")
 	}
 
-	m.skl.Put(key, value.Encode())
-	if version := ParseVersion(key); version > m.maxVersion {
-		m.maxVersion = version
+	for k, v := range values {
+		err := m.cache.Put([]byte(k), v)
+		if err != nil {
+			return errs.Errorf(err, "while writing values to cache")
+		}
 	}
-
 	return nil
 }
 
-func (m *memTable) IsFull() bool {
-	if m.skl.Size() >= uint32(m.option.MemTableSize) {
+func (m *MemTable) Delete(keys [][]byte) {
+	m.DeleteRange(keys, math.MinInt64, math.MaxInt64)
+}
+
+func (m *MemTable) DeleteRange(keys [][]byte, min, max int64) {
+	for _, k := range keys {
+		// Make sure key exist in the cache, skip if it does not
+		e := m.cache.Get(k)
+		if e == nil {
+			continue
+		}
+		origSize := uint32(e.Size())
+		if min == math.MinInt64 && max == math.MaxInt64 {
+			e.Clean()
+		}
+		e.Filter(min, max)
+		m.cache.DecreaseSize(origSize - uint32(e.Size()))
+	}
+}
+
+func (m *MemTable) IsFull() bool {
+	if m.cache.Size() >= uint32(m.option.MemTableSize) {
 		return true
 	}
 
-	return m.wal.pos >= uint32(m.option.MemTableSize)
+	return m.wal.Pos >= uint32(m.option.MemTableSize)
 }
 
-func (m *memTable) SyncWAL() error {
+func (m *MemTable) SyncWAL() error {
 	return m.wal.Sync()
 }
 
-func (m *memTable) IncrRef() {
-	m.skl.Ref()
+func (m *MemTable) IncrRef() {
+	m.cache.Ref()
 }
 
-// DecrRef decrements the refcount, deallocating the Skiplist when done using it
-func (m *memTable) DecrRef() {
-	m.skl.Deref()
+func (m *MemTable) DecrRef() {
+	m.cache.Deref()
 }
 
-func (m *memTable) restoreFromWAL() error {
-	if m.wal == nil || m.skl == nil {
+func (m *MemTable) restoreFromWAL() error {
+	if m.wal == nil || m.cache == nil {
 		return nil
 	}
+	r := store.NewWALReader(m.wal.NewReader(0))
 
-	end, err := m.wal.iterate(0, m.restore())
-	if err != nil {
-		return Wrapf(err, "while restore memtable from wal: %s", m.wal.Fd.Name())
-	}
-
-	return m.wal.Truncate(int64(end))
-}
-
-func (m *memTable) restore() walker {
-	return func(e *entry, _ valPtr) error {
-		ev := EValue{
-			Meta:  byte(e.rtype),
-			Value: e.value,
+	for r.Next() {
+		entry, err := r.Read()
+		if err != nil {
+			n := r.Count()
+			log.Printf("file corrupt, errs: %v", err)
+			if err = m.wal.Truncate(n); err != nil {
+				return err
+			}
+			break
 		}
 
-		if version := ParseVersion(e.key); version > m.maxVersion {
-			m.maxVersion = version
+		switch t := entry.(type) {
+		case *store.WriteWALEntry:
+			if err = m.WriteMulti(t.Values); err != nil {
+				return err
+			}
+		case *store.DeleteRangeWALEntry:
+			m.DeleteRange(t.Keys, t.Min, t.Max)
+		case *store.DeleteWALEntry:
+			m.Delete(t.Keys)
 		}
-		m.skl.Put(e.key, ev.Encode())
-		return nil
-	}
-}
-
-func memTableFilePath(dir string, fid int) string {
-	return filepath.Join(dir, fmt.Sprintf("%05d%s", fid, MemFileExt))
-}
-
-func arenaSize(option equinox.Options) uint32 {
-	sz := int64(option.MemTableSize + option.maxBatchSize +
-		option.maxBatchCount*internel.MaxNodeSize)
-
-	if sz > math.MaxUint32 {
-		panic(fmt.Sprintf("invalid size for arena: %d", sz))
 	}
 
-	return uint32(sz)
+	return m.wal.Truncate(r.Count())
 }

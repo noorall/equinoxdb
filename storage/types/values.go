@@ -237,3 +237,24 @@ func (a Values) Merge(b Values) Values {
 func (a Values) Len() int           { return len(a) }
 func (a Values) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a Values) Less(i, j int) bool { return a[i].UnixNano() < a[j].UnixNano() }
+
+func (a Values) Encode(buf []byte) ([]byte, error) {
+	if len(a) == 0 {
+		panic("unable to encode block type")
+	}
+
+	switch a[0].(type) {
+	case FloatValue:
+		return encodeFloatBlock(buf, a)
+	case IntegerValue:
+		return encodeIntegerBlock(buf, a)
+	case UnsignedValue:
+		return encodeUnsignedBlock(buf, a)
+	case BooleanValue:
+		return encodeBooleanBlock(buf, a)
+	case StringValue:
+		return encodeStringBlock(buf, a)
+	}
+
+	return nil, fmt.Errorf("unsupported value type %T", a[0])
+}

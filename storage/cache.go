@@ -1,6 +1,6 @@
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreementc.  See the NOTICE file
+ * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
  * regarding copyright ownership.  The ASF licenses this file
  * to you under the Apache License, Version 2.0 (the
@@ -16,10 +16,14 @@
  * limitations under the License.
  */
 
-package types
+package storage
 
 import (
+	"equinox/storage/codec"
+	"equinox/storage/types"
+	equinox "equinox/types"
 	"math/rand"
+	"runtime"
 	"sync/atomic"
 	"unsafe"
 )
@@ -32,7 +36,6 @@ const (
 type CloseHandler func()
 type Comparator func([]byte, []byte) int
 
-// Cache TODO: Non-thread-safe may need to be modified
 type Cache struct {
 	head *node
 
@@ -47,7 +50,7 @@ type Cache struct {
 type node struct {
 	key []byte
 
-	entry *Entry
+	entry *types.Entry
 
 	height uint16
 
@@ -58,8 +61,8 @@ func (n *node) setNexNode(height int, old *node, new *node) bool {
 	return atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(n.tower[height])), unsafe.Pointer(old), unsafe.Pointer(new))
 }
 
-func newNode(key []byte, value Values, height int) *node {
-	entry, _ := newEntryValues(value)
+func newNode(key []byte, value types.Values, height int) *node {
+	entry, _ := types.NewEntryValues(value)
 	return &node{
 		height: uint16(height),
 		key:    key,
@@ -67,7 +70,7 @@ func newNode(key []byte, value Values, height int) *node {
 	}
 }
 
-func NewSkipList(cmp Comparator) *Cache {
+func NewCache(cmp Comparator) *Cache {
 	if cmp == nil {
 		panic("Unset the comparator for Cache!")
 	}
@@ -81,7 +84,7 @@ func NewSkipList(cmp Comparator) *Cache {
 	}
 }
 
-func (c *Cache) Put(key []byte, values Values) error {
+func (c *Cache) Put(key []byte, values types.Values) error {
 	c.size.Add(uint32(len(key) + values.Size()))
 
 	oldHeight := c.getHeight()
@@ -95,7 +98,7 @@ func (c *Cache) Put(key []byte, values Values) error {
 		prev[i], next[i] = c.getSplices(key, prev[i+1], i)
 		// Found the exist key, merge
 		if prev[i] == next[i] {
-			return prev[i].entry.add(values)
+			return prev[i].entry.Add(values)
 		}
 	}
 
@@ -134,21 +137,36 @@ func (c *Cache) Put(key []byte, values Values) error {
 			// So we need search splices for the node again
 			prev[i], next[i] = c.getSplices(key, prev[i], i)
 			if prev[i] == next[i] {
-				return prev[i].entry.add(values)
+				return prev[i].entry.Add(values)
 			}
 		}
 	}
 	return nil
 }
 
-func (c *Cache) Get(key []byte) ([]byte, *Entry) {
+func (c *Cache) Get(key []byte) *types.Entry {
 	n := c.findGreaterOrEqual(key)
 
 	if n == nil {
-		return key, nil
+		return nil
 	}
 
-	return n.key, n.entry
+	return n.entry
+}
+
+func (c *Cache) Delete(key []byte) {
+	n := c.findGreaterOrEqual(key)
+
+	if n == nil {
+		return
+	}
+
+	c.DecreaseSize(uint32(n.entry.Size()))
+	n.entry.Clean()
+}
+
+func (c *Cache) DecreaseSize(delta uint32) {
+	c.size.Add(^(delta - 1))
 }
 
 func (c *Cache) Empty() bool {
@@ -177,9 +195,27 @@ func (c *Cache) Deref() {
 	c.head = nil
 }
 
-func (c *Cache) Iterator() *Iterator {
-	c.Ref()
-	return &Iterator{c: c}
+func (c *Cache) Deduplicate() {
+	n := c.head.tower[0]
+	for {
+		if n == nil {
+			return
+		}
+		n.entry.Deduplicate()
+		n = n.tower[0]
+	}
+}
+
+func (c *Cache) getAllNodes() []*node {
+	var nodes []*node
+	head := c.head.tower[0]
+	for {
+		if head == nil {
+			return nodes
+		}
+		nodes = append(nodes, head)
+		head = head.tower[0]
+	}
 }
 
 func (c *Cache) getSplices(key []byte, from *node, level int) (*node, *node) {
@@ -273,7 +309,6 @@ func (c *Cache) randomHeight() int32 {
 	for h < maxHeight && (rand.Uint32()&mask) == 0 {
 		h++
 	}
-
 	return h
 }
 
@@ -298,50 +333,169 @@ func (c *Cache) findLast() *node {
 	}
 }
 
+type cacheBlock struct {
+	k                []byte
+	minTime, maxTime int64
+	b                []byte
+	err              error
+}
+
 type Iterator struct {
-	c *Cache
-	n *node
+	c      *Cache
+	n      *node
+	size   int
+	nodes  []*node
+	blocks map[*node][]cacheBlock
+	ready  []chan struct{}
 }
 
-func (i *Iterator) Key() []byte {
-	return i.n.key
+func NewIteratorForWrite(c *Cache) *Iterator {
+	nodes := c.getAllNodes()
+	ready := make([]chan struct{}, len(nodes))
+	for i := 0; i < len(nodes); i++ {
+		ready[i] = make(chan struct{}, 1)
+	}
+	it := &Iterator{
+		c:      c,
+		size:   equinox.DefaultMaxPointsPerBlock,
+		nodes:  nodes,
+		ready:  ready,
+		blocks: make(map[*node][]cacheBlock),
+	}
+	go it.encode()
+	return it
 }
 
-func (i *Iterator) Value() *Entry {
-	return i.n.entry
-}
+func (it *Iterator) encode() {
+	concurrency := runtime.GOMAXPROCS(0)
+	n := len(it.ready)
 
-func (i *Iterator) Valid() bool {
-	return i.n != nil
-}
+	chunkSize := 1
+	idx := uint64(0)
 
-func (i *Iterator) Next() {
-	if i.Valid() {
-		i.n = i.c.getNext(i.n, 0)
+	for i := 0; i < concurrency; i++ {
+		// Run one goroutine per CPU and encode a section of the key space concurrently
+		go func() {
+			tEnc := codec.GetTimeEncoder(equinox.DefaultMaxPointsPerBlock)
+			fEnc := codec.GetFloatEncoder(equinox.DefaultMaxPointsPerBlock)
+			bEnc := codec.GetBooleanEncoder(equinox.DefaultMaxPointsPerBlock)
+			uEnc := codec.GetUnsignedEncoder(equinox.DefaultMaxPointsPerBlock)
+			sEnc := codec.GetStringEncoder(equinox.DefaultMaxPointsPerBlock)
+			iEnc := codec.GetIntegerEncoder(equinox.DefaultMaxPointsPerBlock)
+
+			defer codec.PutTimeEncoder(tEnc)
+			defer codec.PutFloatEncoder(fEnc)
+			defer codec.PutBooleanEncoder(bEnc)
+			defer codec.PutUnsignedEncoder(uEnc)
+			defer codec.PutStringEncoder(sEnc)
+			defer codec.PutIntegerEncoder(iEnc)
+
+			for {
+				curIdx := int(atomic.AddUint64(&idx, uint64(chunkSize))) - chunkSize
+
+				if curIdx >= n {
+					break
+				}
+
+				curNode := it.nodes[curIdx]
+				key := curNode.key
+				values := curNode.entry.Values()
+
+				for len(values) > 0 {
+
+					end := len(values)
+					if end > it.size {
+						end = it.size
+					}
+
+					minTime, maxTime := values[0].UnixNano(), values[end-1].UnixNano()
+					var b []byte
+					var err error
+
+					switch values[0].(type) {
+					case types.FloatValue:
+						b, err = types.EncodeFloatBlockUsing(nil, values[:end], tEnc, fEnc)
+					case types.IntegerValue:
+						b, err = types.EncodeIntegerBlockUsing(nil, values[:end], tEnc, iEnc)
+					case types.UnsignedValue:
+						b, err = types.EncodeUnsignedBlockUsing(nil, values[:end], tEnc, uEnc)
+					case types.BooleanValue:
+						b, err = types.EncodeBooleanBlockUsing(nil, values[:end], tEnc, bEnc)
+					case types.StringValue:
+						b, err = types.EncodeStringBlockUsing(nil, values[:end], tEnc, sEnc)
+					default:
+						b, err = types.Values(values[:end]).Encode(nil)
+					}
+
+					values = values[end:]
+
+					it.blocks[curNode] = append(it.blocks[curNode], cacheBlock{
+						k:       key,
+						minTime: minTime,
+						maxTime: maxTime,
+						b:       b,
+						err:     err,
+					})
+				}
+				// Notify this key is fully encoded
+				it.ready[curIdx] <- struct{}{}
+			}
+		}()
 	}
 }
 
-func (i *Iterator) Prev() {
-	if i.Valid() {
-		i.n = i.c.findLessThan(i.Key())
+func (it *Iterator) Key() []byte {
+	return it.n.key
+}
+
+func (it *Iterator) ReadBinaryValue() ([]byte, int64, int64, []byte, error) {
+	blk := it.blocks[it.n][0]
+	return blk.k, blk.minTime, blk.maxTime, blk.b, blk.err
+}
+
+func (it *Iterator) Value() *types.Entry {
+	return it.n.entry
+}
+
+func (it *Iterator) Valid() bool {
+	return it.n != nil
+}
+
+func (it *Iterator) Next() bool {
+	if it.Valid() {
+		if len(it.blocks[it.n]) > 0 {
+			it.blocks[it.n] = it.blocks[it.n][1:]
+			if len(it.blocks[it.n]) > 0 {
+				return true
+			}
+		}
+		it.n = it.c.getNext(it.n, 0)
+		return true
+	}
+	return false
+}
+
+func (it *Iterator) Prev() {
+	if it.Valid() {
+		it.n = it.c.findLessThan(it.Key())
 	}
 }
 
-func (i *Iterator) Seek(target []byte) {
-	if i.Valid() {
-		i.n = i.c.findGreaterOrEqual(target)
+func (it *Iterator) Seek(target []byte) {
+	if it.Valid() {
+		it.n = it.c.findGreaterOrEqual(target)
 	}
 }
 
-func (i *Iterator) SeekToFirst() {
-	i.n = i.c.getNext(i.c.head, 0)
+func (it *Iterator) SeekToFirst() {
+	it.n = it.c.getNext(it.c.head, 0)
 }
 
-func (i *Iterator) SeekToLast() {
-	i.n = i.c.findLast()
+func (it *Iterator) SeekToLast() {
+	it.n = it.c.findLast()
 }
 
-func (i *Iterator) Close() error {
-	i.c.Deref()
+func (it *Iterator) Close() error {
+	it.c.Deref()
 	return nil
 }
