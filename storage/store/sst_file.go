@@ -19,52 +19,41 @@
 package store
 
 import (
-	"equinox/storage/types"
-	"io"
+	"equinox/internel"
+	"sync"
 )
 
 const (
 	SSTFileExtension = "sst"
+
+	// MagicNumber is written as the first 4 bytes of a data file to
+	// identify the file as a tsm1 formatted file
+	MagicNumber uint32 = 0x16D116D1
+
+	// Version indicates the version of the TSM file format.
+	Version byte = 1
+
+	// Size in bytes of an index entry
+	indexEntrySize = 28
+
+	// Size in bytes used to store the count of index entries for a key
+	indexCountSize = 2
+
+	// Size in bytes used to store the type of block encoded
+	indexTypeSize = 1
+
+	// Max number of blocks for a given key that can exist in a single file
+	maxIndexEntries = (1 << (indexCountSize * 8)) - 1
+
+	// max length of a key in an index entry (measurement + tags)
+	maxKeyLength = (1 << (2 * 8)) - 1
+
+	// The threshold amount data written before we periodically fsync a TSM file.  This helps avoid
+	// long pauses due to very large fsyncs at the end of writing a TSM file.
+	fsyncEvery = 25 * 1024 * 1024
 )
 
-type SSTWriter interface {
-	Write(key []byte, values types.Values) error
-
-	WriteBlock(key []byte, minTime, maxTime int64, block []byte) error
-
-	WriteIndex() error
-
-	Flush() error
-
-	Close() error
-
-	Size() uint32
-
-	Remove() error
-}
-
-type IndexWriter interface {
-	Add(key []byte, blockType byte, minTime, maxTime int64, offset int64, size uint32)
-
-	Entries(key []byte) []IndexEntry
-
-	KeyCount() int
-
-	Size() uint32
-
-	MarshalBinary() ([]byte, error)
-
-	WriteTo(w io.Writer) (int64, error)
-
-	Close() error
-
-	Remove() error
-}
-
-type IndexEntry struct {
-	MinTime, MaxTime int64
-
-	Offset int64
-
-	Size uint32
+type SSTable struct {
+	sync.Mutex
+	*internel.MMapFile
 }
