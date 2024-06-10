@@ -414,17 +414,17 @@ func (it *Iterator) encode() {
 
 					switch values[0].(type) {
 					case types.FloatValue:
-						b, err = types.EncodeFloatBlockUsing(nil, values[:end], tEnc, fEnc)
+						b, err = codec.EncodeFloatBlockUsing(nil, values[:end], tEnc, fEnc)
 					case types.IntegerValue:
-						b, err = types.EncodeIntegerBlockUsing(nil, values[:end], tEnc, iEnc)
+						b, err = codec.EncodeIntegerBlockUsing(nil, values[:end], tEnc, iEnc)
 					case types.UnsignedValue:
-						b, err = types.EncodeUnsignedBlockUsing(nil, values[:end], tEnc, uEnc)
+						b, err = codec.EncodeUnsignedBlockUsing(nil, values[:end], tEnc, uEnc)
 					case types.BooleanValue:
-						b, err = types.EncodeBooleanBlockUsing(nil, values[:end], tEnc, bEnc)
+						b, err = codec.EncodeBooleanBlockUsing(nil, values[:end], tEnc, bEnc)
 					case types.StringValue:
-						b, err = types.EncodeStringBlockUsing(nil, values[:end], tEnc, sEnc)
+						b, err = codec.EncodeStringBlockUsing(nil, values[:end], tEnc, sEnc)
 					default:
-						b, err = types.Values(values[:end]).Encode(nil)
+						b, err = codec.EncodeValues(values[:end], nil)
 					}
 
 					values = values[end:]

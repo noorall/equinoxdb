@@ -19,7 +19,7 @@
 package codec
 
 import (
-	"equinox/storage/pool"
+	"equinox/pkg/pool"
 	equinox "equinox/types"
 	"runtime"
 )

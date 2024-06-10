@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"equinox/internel"
+	"equinox/pkg/pool"
 	"equinox/storage/errs"
-	"equinox/storage/pool"
 	"equinox/storage/types"
 	"fmt"
 	"github.com/golang/snappy"
@@ -39,7 +39,7 @@ const (
 )
 
 var (
-	bytesPool     = pool.NewBytesHoldPool(256)
+	bytesPool     = pool.NewBytes(256)
 	bytesSyncPool = pool.NewBytesSyncPool()
 )
 

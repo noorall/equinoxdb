@@ -25,6 +25,7 @@ package codec
 
 import (
 	"encoding/binary"
+	"equinox/storage/types"
 	"fmt"
 )
 
@@ -184,4 +185,193 @@ func (e *BooleanDecoder) Read() bool {
 // Error returns the error encountered during decoding, if one occurred.
 func (e *BooleanDecoder) Error() error {
 	return e.err
+}
+
+func EncodeBooleanBlock(buf []byte, values []types.Value) ([]byte, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+
+	// A boolean block is encoded using different compression strategies
+	// for timestamps and values.
+	venc := GetBooleanEncoder(len(values))
+
+	// Encode timestamps using an adaptive encoder
+	tsenc := GetTimeEncoder(len(values))
+
+	b, err := EncodeBooleanBlockUsing(buf, values, tsenc, venc)
+
+	PutTimeEncoder(tsenc)
+	PutBooleanEncoder(venc)
+
+	return b, err
+}
+
+func EncodeBooleanBlockUsing(buf []byte, values []types.Value, tenc TimeEncoder, venc BooleanEncoder) ([]byte, error) {
+	tenc.Reset()
+	venc.Reset()
+
+	for _, v := range values {
+		vv := v.(types.BooleanValue)
+		tenc.Write(vv.UnixNano())
+		venc.Write(vv.RawValue())
+	}
+
+	// Encoded timestamp values
+	tb, err := tenc.Bytes()
+	if err != nil {
+		return nil, err
+	}
+	// Encoded float values
+	vb, err := venc.Bytes()
+	if err != nil {
+		return nil, err
+	}
+
+	// Prepend the first timestamp of the block in the first 8 bytes and the block
+	// in the next byte, followed by the block
+	return packBlock(buf, BlockBoolean, tb, vb), nil
+}
+
+func DecodeBooleanBlock(block []byte, a *[]types.BooleanValue) ([]types.BooleanValue, error) {
+	// Block type is the next block, make sure we actually have a float block
+	blockType := block[0]
+	if blockType != BlockBoolean {
+		return nil, fmt.Errorf("invalid block type: exp %d, got %d", BlockBoolean, blockType)
+	}
+	block = block[1:]
+
+	tb, vb, err := unpackBlock(block)
+	if err != nil {
+		return nil, err
+	}
+
+	sz := CountTimestamps(tb)
+
+	if cap(*a) < sz {
+		*a = make([]types.BooleanValue, sz)
+	} else {
+		*a = (*a)[:sz]
+	}
+
+	tdec := timeDecoderPool.Get(0).(*TimeDecoder)
+	vdec := booleanDecoderPool.Get(0).(*BooleanDecoder)
+
+	var i int
+	err = func(a []types.BooleanValue) error {
+		// Setup our timestamp and value decoders
+		tdec.Init(tb)
+		vdec.SetBytes(vb)
+
+		// Decode both a timestamp and value
+		j := 0
+		for j < len(a) && tdec.Next() && vdec.Next() {
+			a[j] = types.NewBooleanValue(tdec.Read(), vdec.Read()).(types.BooleanValue)
+			j++
+		}
+		i = j
+
+		// Did timestamp decoding have an error?
+		err = tdec.Error()
+		if err != nil {
+			return err
+		}
+		// Did boolean decoding have an error?
+		return vdec.Error()
+	}(*a)
+
+	timeDecoderPool.Put(tdec)
+	booleanDecoderPool.Put(vdec)
+
+	return (*a)[:i], err
+}
+
+func DecodeBooleanArrayBlock(block []byte, a *types.BooleanArray) error {
+	blockType := block[0]
+	if blockType != BlockBoolean {
+		return fmt.Errorf("invalid block type: exp %d, got %d", BlockBoolean, blockType)
+	}
+
+	tb, vb, err := unpackBlock(block[1:])
+	if err != nil {
+		return err
+	}
+
+	a.Timestamps, err = TimeArrayDecodeAll(tb, a.Timestamps)
+	if err != nil {
+		return err
+	}
+	a.Values, err = BooleanArrayDecodeAll(vb, a.Values)
+	return err
+}
+
+// BooleanArrayEncodeAll encodes src into b, returning b and any error encountered.
+// The returned slice may be of a different length and capacity to b.
+func BooleanArrayEncodeAll(src []bool, b []byte) ([]byte, error) {
+	sz := 1 + 8 + ((len(src) + 7) / 8) // Header + Num bools + bool data.
+	if len(b) < sz && cap(b) > sz {
+		b = b[:sz]
+	} else if len(b) < sz {
+		b = append(b, make([]byte, sz)...)
+	}
+
+	// Store the encoding type in the 4 high bits of the first byte
+	b[0] = byte(booleanCompressedBitPacked) << 4
+	n := uint64(8) // Current bit in current byte.
+
+	// Encode the number of booleans written.
+	i := binary.PutUvarint(b[n>>3:], uint64(len(src)))
+	n += uint64(i * 8)
+
+	for _, v := range src {
+		if v {
+			b[n>>3] |= 128 >> (n & 7) // Set current bit on current byte.
+		} else {
+			b[n>>3] &^= 128 >> (n & 7) // Clear current bit on current byte.
+		}
+		n++
+	}
+
+	length := n >> 3
+	if n&7 > 0 {
+		length++ // Add an extra byte to capture overflowing bits.
+	}
+	return b[:length], nil
+}
+
+func BooleanArrayDecodeAll(b []byte, dst []bool) ([]bool, error) {
+	if len(b) == 0 {
+		return nil, nil
+	}
+
+	// First byte stores the encoding type, only have 1 bit-packet format
+	// currently ignore for now.
+	b = b[1:]
+	val, n := binary.Uvarint(b)
+	if n <= 0 {
+		return nil, fmt.Errorf("BooleanBatchDecoder: invalid count")
+	}
+
+	count := int(val)
+
+	b = b[n:]
+	if min := len(b) * 8; min < count {
+		// Shouldn't happen - TSM file was truncated/corrupted
+		count = min
+	}
+
+	if cap(dst) < count {
+		dst = make([]bool, count)
+	} else {
+		dst = dst[:count]
+	}
+
+	j := 0
+	for _, v := range b {
+		for i := byte(128); i > 0 && j < len(dst); i >>= 1 {
+			dst[j] = v&i != 0
+			j++
+		}
+	}
+	return dst, nil
 }
