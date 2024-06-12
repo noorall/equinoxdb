@@ -524,6 +524,29 @@ func EncodeUnsignedBlockUsing(buf []byte, values []types.Value, tenc TimeEncoder
 	return packBlock(buf, BlockUnsigned, tb, vb), nil
 }
 
+func EncodeIntegerArrayBlock(a *types.IntegerArray, b []byte) ([]byte, error) {
+	if a.Len() == 0 {
+		return nil, nil
+	}
+
+	// TODO(edd): These need to be pooled.
+	var vb []byte
+	var tb []byte
+	var err error
+
+	if vb, err = IntegerArrayEncodeAll(a.Values, vb); err != nil {
+		return nil, err
+	}
+
+	if tb, err = TimeArrayEncodeAll(a.Timestamps, tb); err != nil {
+		return nil, err
+	}
+
+	// Prepend the first timestamp of the block in the first 8 bytes and the block
+	// in the next byte, followed by the block
+	return packBlock(b, BlockInteger, tb, vb), nil
+}
+
 func DecodeIntegerArrayBlock(block []byte, a *types.IntegerArray) error {
 	blockType := block[0]
 	if blockType != BlockInteger {
@@ -541,6 +564,29 @@ func DecodeIntegerArrayBlock(block []byte, a *types.IntegerArray) error {
 	}
 	a.Values, err = IntegerArrayDecodeAll(vb, a.Values)
 	return err
+}
+
+func EncodeUnsignedArrayBlock(a *types.UnsignedArray, b []byte) ([]byte, error) {
+	if a.Len() == 0 {
+		return nil, nil
+	}
+
+	// TODO(edd): These need to be pooled.
+	var vb []byte
+	var tb []byte
+	var err error
+
+	if vb, err = UnsignedArrayEncodeAll(a.Values, vb); err != nil {
+		return nil, err
+	}
+
+	if tb, err = TimeArrayEncodeAll(a.Timestamps, tb); err != nil {
+		return nil, err
+	}
+
+	// Prepend the first timestamp of the block in the first 8 bytes and the block
+	// in the next byte, followed by the block
+	return packBlock(b, BlockUnsigned, tb, vb), nil
 }
 
 func DecodeUnsignedArrayBlock(block []byte, a *types.UnsignedArray) error {

@@ -5,7 +5,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 )
 
 // Sort sorts a slice of byte slices.
@@ -218,4 +221,44 @@ func verifyVersion(r io.ReadSeeker) error {
 	}
 
 	return nil
+}
+
+// FormatFileNameFunc is executed when generating a new TSM filename.
+// Source filenames are provided via src.
+type FormatFileNameFunc func(generation, sequence int) string
+
+// DefaultFormatFileName is the default implementation to format TSM filenames.
+func DefaultFormatFileName(generation, sequence int) string {
+	return fmt.Sprintf("%09d-%09d", generation, sequence)
+}
+
+// ParseFileNameFunc is executed when parsing a TSM filename into generation & sequence.
+type ParseFileNameFunc func(name string) (generation, sequence int, err error)
+
+// DefaultParseFileName is used to parse the filenames of TSM files.
+func DefaultParseFileName(name string) (int, int, error) {
+	base := filepath.Base(name)
+	idx := strings.Index(base, ".")
+	if idx == -1 {
+		return 0, 0, fmt.Errorf("file %s is named incorrectly", name)
+	}
+
+	id := base[:idx]
+
+	idx = strings.Index(id, "-")
+	if idx == -1 {
+		return 0, 0, fmt.Errorf("file %s is named incorrectly", name)
+	}
+
+	generation, err := strconv.ParseUint(id[:idx], 10, 32)
+	if err != nil {
+		return 0, 0, fmt.Errorf("file %s is named incorrectly", name)
+	}
+
+	sequence, err := strconv.ParseUint(id[idx+1:], 10, 32)
+	if err != nil {
+		return 0, 0, fmt.Errorf("file %s is named incorrectly", name)
+	}
+
+	return int(generation), int(sequence), nil
 }

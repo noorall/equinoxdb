@@ -73,7 +73,7 @@ func (iter *TableIterator) seekFrom(key []byte, mode seekMode) {
 		// Case 1. Need to visit block[found].
 		if found == iter.table.BlockCount() {
 			// If found == iter.table.BlockCount() then input key is greater than ANY element of table.
-			// There's nothing we can do. Valid() should return false as we seek to end of table.
+			// There's nothing we can do. valid() should return false as we seek to end of table.
 			return
 		}
 		// Since block[found].smallest is > key. This is essentially a block[found].SeekToFirst.

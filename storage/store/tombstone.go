@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"compress/gzip"
 	"encoding/binary"
+	"equinox/pkg/file"
 	"errors"
 	"fmt"
 	"io"
@@ -16,10 +17,11 @@ import (
 
 const TombstoneFileExtension = "tombstone"
 const (
-	headerSize = 4
-	v2header   = 0x1502
-	v3header   = 0x1503
-	v4header   = 0x1504
+	headerSize              = 4
+	v2header                = 0x1502
+	v3header                = 0x1503
+	v4header                = 0x1504
+	CompactionTempExtension = "tmp"
 )
 
 var errIncompatibleVersion = errors.New("incompatible v4 version")
@@ -33,6 +35,8 @@ type Tombstoner struct {
 	Path string
 
 	FilterFn func(k []byte) bool
+
+	tombstoneStats TombstoneStat
 
 	// Tombstones that have been written but not flushed to disk yet.
 	tombstones []Tombstone
@@ -48,6 +52,13 @@ type Tombstoner struct {
 	pendingFile       *os.File
 	tmp               [8]byte
 	lastAppliedOffset int64
+}
+
+type TombstoneStat struct {
+	TombstoneExists bool
+	Path            string
+	LastModified    int64
+	Size            uint32
 }
 
 // NewTombstoner constructs a Tombstoner for the given path. FilterFn can be nil.
@@ -168,14 +179,6 @@ func (t *Tombstoner) Delete() error {
 
 // HasTombstones return true if there are any tombstone entries recorded.
 func (t *Tombstoner) HasTombstones() bool {
-	stats := t.TombstoneStats()
-	if !stats.TombstoneExists {
-		return false
-	}
-	if stats.Size > 0 {
-		return true
-	}
-
 	t.mu.RLock()
 	n := len(t.tombstones)
 	t.mu.RUnlock()
@@ -341,10 +344,6 @@ func (t *Tombstoner) commit() error {
 
 	tmpFilename := t.pendingFile.Name()
 	t.pendingFile.Close()
-
-	if err := t.obs.FileFinishing(tmpFilename); err != nil {
-		return err
-	}
 
 	if err := file.RenameFile(tmpFilename, t.tombstonePath()); err != nil {
 		return err
@@ -678,4 +677,39 @@ func (t *Tombstoner) writeTombstone(dst io.Writer, ts Tombstone) error {
 	binary.BigEndian.PutUint64(t.tmp[:], uint64(ts.Max))
 	_, err := dst.Write(t.tmp[:])
 	return err
+}
+
+func (t *Tombstoner) TombstoneStats() TombstoneStat {
+	t.mu.RLock()
+	if t.statsLoaded {
+		stats := t.tombstoneStats
+		t.mu.RUnlock()
+		return stats
+	}
+	t.mu.RUnlock()
+
+	stat, err := os.Stat(t.tombstonePath())
+	if err != nil {
+		t.mu.Lock()
+		// The file doesn't exist so record that we tried to load it so
+		// we don't continue to keep trying.  This is the common case.
+		t.statsLoaded = os.IsNotExist(err)
+		t.tombstoneStats.TombstoneExists = false
+		stats := t.tombstoneStats
+		t.mu.Unlock()
+		return stats
+	}
+
+	t.mu.Lock()
+	t.tombstoneStats = TombstoneStat{
+		TombstoneExists: true,
+		Path:            t.tombstonePath(),
+		LastModified:    stat.ModTime().UnixNano(),
+		Size:            uint32(stat.Size()),
+	}
+	t.statsLoaded = true
+	stats := t.tombstoneStats
+	t.mu.Unlock()
+
+	return stats
 }

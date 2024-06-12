@@ -10,8 +10,6 @@ package mmap
 import (
 	"os"
 	"syscall"
-
-	errors2 "github.com/influxdata/influxdb/v2/pkg/errors"
 )
 
 // Map memory-maps a file.
@@ -20,7 +18,7 @@ func Map(path string, sz int64) (data []byte, err error) {
 	if err != nil {
 		return nil, err
 	}
-	defer errors2.Capture(&err, f.Close)()
+	defer f.Close()
 
 	fi, err := f.Stat()
 	if err != nil {

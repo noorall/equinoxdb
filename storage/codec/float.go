@@ -408,6 +408,29 @@ func DecodeFloatBlock(block []byte, a *[]types.FloatValue) ([]types.FloatValue, 
 	return (*a)[:i], err
 }
 
+func EncodeFloatArrayBlock(a *types.FloatArray, b []byte) ([]byte, error) {
+	if a.Len() == 0 {
+		return nil, nil
+	}
+
+	// TODO(edd): These need to be pooled.
+	var vb []byte
+	var tb []byte
+	var err error
+
+	if vb, err = FloatArrayEncodeAll(a.Values, vb); err != nil {
+		return nil, err
+	}
+
+	if tb, err = TimeArrayEncodeAll(a.Timestamps, tb); err != nil {
+		return nil, err
+	}
+
+	// Prepend the first timestamp of the block in the first 8 bytes and the block
+	// in the next byte, followed by the block
+	return packBlock(b, BlockFloat64, tb, vb), nil
+}
+
 func DecodeFloatArrayBlock(block []byte, a *types.FloatArray) error {
 	blockType := block[0]
 	if blockType != BlockFloat64 {

@@ -11,6 +11,11 @@ import (
 	"sync/atomic"
 )
 
+var (
+	// ErrTSMClosed is returned when performing an operation against a closed TSM file.
+	ErrTSMClosed = fmt.Errorf("tsm file closed")
+)
+
 type blockAccessor interface {
 	init() (*indirectIndex, error)
 	read(key []byte, timestamp int64) ([]types.Value, error)

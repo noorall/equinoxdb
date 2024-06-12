@@ -37,7 +37,7 @@ type CloseHandler func()
 type Comparator func([]byte, []byte) int
 
 type Cache struct {
-	head *node
+	head *Node
 
 	height     int32
 	ref        int32
@@ -47,23 +47,31 @@ type Cache struct {
 	size atomic.Uint32
 }
 
-type node struct {
+type Node struct {
 	key []byte
 
 	entry *types.Entry
 
 	height uint16
 
-	tower [maxHeight]*node
+	tower [maxHeight]*Node
 }
 
-func (n *node) setNexNode(height int, old *node, new *node) bool {
+func (n *Node) GetKey() []byte {
+	return n.key
+}
+
+func (n *Node) GetEntry() *types.Entry {
+	return n.entry
+}
+
+func (n *Node) setNexNode(height int, old *Node, new *Node) bool {
 	return atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(n.tower[height])), unsafe.Pointer(old), unsafe.Pointer(new))
 }
 
-func newNode(key []byte, value types.Values, height int) *node {
+func newNode(key []byte, value types.Values, height int) *Node {
 	entry, _ := types.NewEntryValues(value)
-	return &node{
+	return &Node{
 		height: uint16(height),
 		key:    key,
 		entry:  entry,
@@ -88,8 +96,8 @@ func (c *Cache) Put(key []byte, values types.Values) error {
 	c.size.Add(uint32(len(key) + values.Size()))
 
 	oldHeight := c.getHeight()
-	var prev [maxHeight + 1]*node
-	var next [maxHeight + 1]*node
+	var prev [maxHeight + 1]*Node
+	var next [maxHeight + 1]*Node
 
 	prev[oldHeight] = c.head
 	next[oldHeight] = nil
@@ -125,16 +133,16 @@ func (c *Cache) Put(key []byte, values types.Values) error {
 				prev[i], next[i] = c.getSplices(key, c.head, i)
 			}
 
-			// cas, try to add the new node at level
+			// cas, try to add the new Node at level
 			x.tower[i] = next[i]
 			if prev[i].setNexNode(i, next[i], x) {
-				// Insert the new node between prev[i] and next[i].
+				// Insert the new Node between prev[i] and next[i].
 				// Go to the next level.
 				break
 			}
 
-			// CAS failed, there are some other nodes inserted concurrently among this node inserting
-			// So we need search splices for the node again
+			// CAS failed, there are some other nodes inserted concurrently among this Node inserting
+			// So we need search splices for the Node again
 			prev[i], next[i] = c.getSplices(key, prev[i], i)
 			if prev[i] == next[i] {
 				return prev[i].entry.Add(values)
@@ -206,8 +214,18 @@ func (c *Cache) Deduplicate() {
 	}
 }
 
-func (c *Cache) getAllNodes() []*node {
-	var nodes []*node
+// TODO: optimize this part
+func (c *Cache) Count() int {
+	return len(c.GetAllNodes())
+}
+
+// TODO: implements this part
+func (c *Cache) Split(n int) []*Cache {
+	return []*Cache{c}
+}
+
+func (c *Cache) GetAllNodes() []*Node {
+	var nodes []*Node
 	head := c.head.tower[0]
 	for {
 		if head == nil {
@@ -218,9 +236,9 @@ func (c *Cache) getAllNodes() []*node {
 	}
 }
 
-func (c *Cache) getSplices(key []byte, from *node, level int) (*node, *node) {
+func (c *Cache) getSplices(key []byte, from *Node, level int) (*Node, *Node) {
 	for {
-		next := c.getNext(from, level)
+		next := c.GetNext(from, level)
 		if next == nil {
 			return from, next
 		}
@@ -238,9 +256,9 @@ func (c *Cache) getSplices(key []byte, from *node, level int) (*node, *node) {
 	}
 }
 
-func (c *Cache) getFrom(key []byte, from *node, level int) *node {
+func (c *Cache) getFrom(key []byte, from *Node, level int) *Node {
 	for {
-		next := c.getNext(from, level)
+		next := c.GetNext(from, level)
 		if next == nil {
 			return nil
 		}
@@ -258,7 +276,7 @@ func (c *Cache) getFrom(key []byte, from *node, level int) *node {
 	}
 }
 
-func (c *Cache) getNext(node *node, height int) *node {
+func (c *Cache) GetNext(node *Node, height int) *Node {
 	return node.tower[height]
 }
 
@@ -266,12 +284,12 @@ func (c *Cache) getHeight() int32 {
 	return atomic.LoadInt32(&c.height)
 }
 
-// find the rightmost node such that key < target
-func (c *Cache) findLessThan(target []byte) *node {
+// find the rightmost Node such that key < target
+func (c *Cache) findLessThan(target []byte) *Node {
 	curr, level := c.head, int(c.getHeight())-1
 
 	for {
-		next := c.getNext(curr, level)
+		next := c.GetNext(curr, level)
 
 		if next != nil && c.comparator(next.key, target) < 0 {
 			curr = next
@@ -287,12 +305,12 @@ func (c *Cache) findLessThan(target []byte) *node {
 	}
 }
 
-// find the leftmost node such that key >= target
-func (c *Cache) findGreaterOrEqual(target []byte) *node {
+// find the leftmost Node such that key >= target
+func (c *Cache) findGreaterOrEqual(target []byte) *Node {
 	curr, level := c.head, int(c.getHeight())-1
 
 	for {
-		next := c.getNext(curr, level)
+		next := c.GetNext(curr, level)
 
 		if next != nil && c.comparator(next.key, target) < 0 {
 			curr = next
@@ -312,12 +330,12 @@ func (c *Cache) randomHeight() int32 {
 	return h
 }
 
-func (c *Cache) findLast() *node {
+func (c *Cache) findLast() *Node {
 	curr := c.head
 	level := int(c.getHeight()) - 1
 
 	for {
-		next := c.getNext(curr, level)
+		next := c.GetNext(curr, level)
 
 		if next != nil {
 			curr = next
@@ -342,15 +360,15 @@ type cacheBlock struct {
 
 type Iterator struct {
 	c      *Cache
-	n      *node
+	n      *Node
 	size   int
-	nodes  []*node
-	blocks map[*node][]cacheBlock
+	nodes  []*Node
+	blocks map[*Node][]cacheBlock
 	ready  []chan struct{}
 }
 
 func NewIteratorForWrite(c *Cache) *Iterator {
-	nodes := c.getAllNodes()
+	nodes := c.GetAllNodes()
 	ready := make([]chan struct{}, len(nodes))
 	for i := 0; i < len(nodes); i++ {
 		ready[i] = make(chan struct{}, 1)
@@ -360,7 +378,7 @@ func NewIteratorForWrite(c *Cache) *Iterator {
 		size:   equinox.DefaultMaxPointsPerBlock,
 		nodes:  nodes,
 		ready:  ready,
-		blocks: make(map[*node][]cacheBlock),
+		blocks: make(map[*Node][]cacheBlock),
 	}
 	go it.encode()
 	return it
@@ -469,7 +487,7 @@ func (it *Iterator) Next() bool {
 				return true
 			}
 		}
-		it.n = it.c.getNext(it.n, 0)
+		it.n = it.c.GetNext(it.n, 0)
 		return true
 	}
 	return false
@@ -488,7 +506,7 @@ func (it *Iterator) Seek(target []byte) {
 }
 
 func (it *Iterator) SeekToFirst() {
-	it.n = it.c.getNext(it.c.head, 0)
+	it.n = it.c.GetNext(it.c.head, 0)
 }
 
 func (it *Iterator) SeekToLast() {

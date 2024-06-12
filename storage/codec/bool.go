@@ -286,6 +286,29 @@ func DecodeBooleanBlock(block []byte, a *[]types.BooleanValue) ([]types.BooleanV
 	return (*a)[:i], err
 }
 
+func EncodeBooleanArrayBlock(a *types.BooleanArray, b []byte) ([]byte, error) {
+	if a.Len() == 0 {
+		return nil, nil
+	}
+
+	// TODO(edd): These need to be pooled.
+	var vb []byte
+	var tb []byte
+	var err error
+
+	if vb, err = BooleanArrayEncodeAll(a.Values, vb); err != nil {
+		return nil, err
+	}
+
+	if tb, err = TimeArrayEncodeAll(a.Timestamps, tb); err != nil {
+		return nil, err
+	}
+
+	// Prepend the first timestamp of the block in the first 8 bytes and the block
+	// in the next byte, followed by the block
+	return packBlock(b, BlockBoolean, tb, vb), nil
+}
+
 func DecodeBooleanArrayBlock(block []byte, a *types.BooleanArray) error {
 	blockType := block[0]
 	if blockType != BlockBoolean {

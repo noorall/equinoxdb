@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"equinox/storage/codec"
+	"strings"
 
 	"equinox/storage/types"
 	"fmt"
@@ -18,9 +19,6 @@ import (
 var (
 	//ErrNoValues is returned when TSMWriter.WriteIndex is called and there are no values to write.
 	ErrNoValues = fmt.Errorf("no values written")
-
-	// ErrSSTClosed is returned when performing an operation against a closed SST file.
-	ErrSSTClosed = fmt.Errorf("sst file closed")
 
 	// ErrMaxKeyLengthExceeded is returned when attempting to write a key that is too long.
 	ErrMaxKeyLengthExceeded = fmt.Errorf("max key length exceeded")
@@ -182,6 +180,10 @@ type directIndex struct {
 func NewIndexWriter() IndexWriter {
 	buf := bytes.NewBuffer(make([]byte, 0, 1024*1024))
 	return &directIndex{buf: buf, w: bufio.NewWriter(buf)}
+}
+
+func NewDiskIndexWriter(f *os.File) IndexWriter {
+	return &directIndex{fd: f, w: bufio.NewWriterSize(f, 1024*1024)}
 }
 
 func (d *directIndex) Add(key []byte, blockType byte, minTime, maxTime int64, offset int64, size uint32) {
@@ -463,8 +465,25 @@ type sstWriter struct {
 	lastSync int64
 }
 
-func NewSSTWriter(w io.Writer) (SSTWriter, error) {
+func NewTSMWriter(w io.Writer) (SSTWriter, error) {
 	index := NewIndexWriter()
+	return &sstWriter{wrapped: w, w: bufio.NewWriterSize(w, 1024*1024), index: index}, nil
+}
+
+func NewTSMWriterWithDiskBuffer(w io.Writer) (SSTWriter, error) {
+	var index IndexWriter
+	// Make sure is a File so we can write the temp index alongside it.
+	if fw, ok := w.(syncer); ok {
+		f, err := os.OpenFile(strings.TrimSuffix(fw.Name(), ".tsm.tmp")+".idx.tmp", os.O_CREATE|os.O_RDWR|os.O_EXCL, 0666)
+		if err != nil {
+			return nil, err
+		}
+		index = NewDiskIndexWriter(f)
+	} else {
+		// w is not a file, just use an inmem index
+		index = NewIndexWriter()
+	}
+
 	return &sstWriter{wrapped: w, w: bufio.NewWriterSize(w, 1024*1024), index: index}, nil
 }
 

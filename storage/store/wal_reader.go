@@ -16,7 +16,7 @@ type WALReader struct {
 	err   error
 }
 
-// NewWALReader returns a new WALReader reading from r.
+// NewWALReader returns a new WALReader reading from R.
 func NewWALReader(r io.Reader) *WALReader {
 	return &WALReader{
 		r: bufio.NewReader(r),
