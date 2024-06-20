@@ -649,7 +649,7 @@ func (f *FileStore) Read(key []byte, t int64) ([]types.Value, error) {
 	return nil, nil
 }
 
-// Reader returns a TSMReader for path if one is currently managed by the FileStore.
+// TSMReader returns a TSMReader for path if one is currently managed by the FileStore.
 // Otherwise it returns nil. If it returns a file, you must call Unref on it when
 // you are done, and never use it after that.
 func (f *FileStore) TSMReader(path string) *TSMReader {
