@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	WALFileExtension = "wal"
+	WALFileExtension = ".wal"
 
 	float64EntryType  = 1
 	integerEntryType  = 2

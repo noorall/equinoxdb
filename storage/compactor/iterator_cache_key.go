@@ -58,6 +58,7 @@ func NewCacheKeyIterator(c *storage.Cache, interrupt chan struct{}) KeyIterator 
 		blocks:    make(map[*storage.Node][]cacheBlock),
 		interrupt: interrupt,
 	}
+	it.c.Ref()
 	go it.encode()
 	return it
 }

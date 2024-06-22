@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package equinox
+package models
 
 import (
 	"fmt"
@@ -60,7 +60,9 @@ type Point interface {
 
 	SetTime(t time.Time)
 
-	Iterator() FieldIterator
+	FieldIterator() FieldIterator
+
+	String() string
 }
 
 type FieldIterator interface {
@@ -132,7 +134,7 @@ func (p *point) Fields() (Fields, error) {
 	return p.cachedFields, nil
 }
 
-func (p *point) Iterator() FieldIterator {
+func (p *point) FieldIterator() FieldIterator {
 	return p
 }
 
@@ -219,7 +221,7 @@ func (p *point) Reset() {
 }
 
 func (p *point) unmarshalBinary() (Fields, error) {
-	iter := p.Iterator()
+	iter := p.FieldIterator()
 	fields := make(Fields, 8)
 	for iter.Next() {
 		if len(iter.FieldKey()) == 0 {
@@ -257,6 +259,13 @@ func (p *point) unmarshalBinary() (Fields, error) {
 		}
 	}
 	return fields, nil
+}
+
+func (p *point) String() string {
+	if p.Time().IsZero() {
+		return string(p.Key()) + " " + string(p.fields)
+	}
+	return string(p.Key()) + " " + string(p.fields) + " " + strconv.FormatInt(p.Time().UnixNano(), 10)
 }
 
 func NewPoint(key string, fields Fields, t time.Time) (Point, error) {
@@ -343,4 +352,43 @@ func appendField(b []byte, k string, v interface{}) []byte {
 
 	}
 	return b
+}
+
+func scanTo(buf []byte, i int, stop byte) (int, []byte) {
+	start := i
+	for {
+		// reached the end of buf?
+		if i >= len(buf) {
+			break
+		}
+		// Reached unescaped stop value?
+		if buf[i] == stop && (i == 0 || buf[i-1] != '\\') {
+			break
+		}
+		i++
+	}
+	return i, buf[start:i]
+}
+
+func scanFieldValue(buf []byte, i int) (int, []byte) {
+	start := i
+	quoted := false
+	for i < len(buf) {
+		// Only escape char for a field value is a double-quote and backslash
+		if buf[i] == '\\' && i+1 < len(buf) && (buf[i+1] == '"' || buf[i+1] == '\\') {
+			i += 2
+			continue
+		}
+		// Quoted value? (e.g. string)
+		if buf[i] == '"' {
+			i++
+			quoted = !quoted
+			continue
+		}
+		if buf[i] == ',' && !quoted {
+			break
+		}
+		i++
+	}
+	return i, buf[start:i]
 }

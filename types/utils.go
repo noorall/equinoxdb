@@ -20,56 +20,6 @@ package equinox
 
 import "bytes"
 
-func scanTo(buf []byte, i int, stop byte) (int, []byte) {
-	start := i
-	for {
-		// reached the end of buf?
-		if i >= len(buf) {
-			break
-		}
-		// Reached unescaped stop value?
-		if buf[i] == stop && (i == 0 || buf[i-1] != '\\') {
-			break
-		}
-		i++
-	}
-	return i, buf[start:i]
-}
-
-func scanFieldValue(buf []byte, i int) (int, []byte) {
-	start := i
-	quoted := false
-	for i < len(buf) {
-		// Only escape char for a field value is a double-quote and backslash
-		if buf[i] == '\\' && i+1 < len(buf) && (buf[i+1] == '"' || buf[i+1] == '\\') {
-			i += 2
-			continue
-		}
-		// Quoted value? (e.g. string)
-		if buf[i] == '"' {
-			i++
-			quoted = !quoted
-			continue
-		}
-		if buf[i] == ',' && !quoted {
-			break
-		}
-		i++
-	}
-	return i, buf[start:i]
-}
-
-func ParseKey(key []byte) []byte {
-	if key == nil {
-		return nil
-	}
-	return key[:len(key)-8]
-}
-
 func CompareKeys(a, b []byte) int {
-	if cmp := bytes.Compare(ParseKey(a), ParseKey(b)); cmp != 0 {
-		return cmp
-	}
-
-	return bytes.Compare(b[len(a)-8:], a[len(b)-8:])
+	return bytes.Compare(a, b)
 }

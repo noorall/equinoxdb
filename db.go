@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"equinox/internel"
-	"equinox/types"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -34,7 +33,7 @@ type DB interface {
 	GetExtend(options *ReadOptions, key []byte) (value *EValue, err error)
 	GetOption() Options
 	Close() error
-	TSWrite(options *WriteOptions, points []types.TSEntry) error
+	//TSWrite(options *WriteOptions, points []types.TSEntry) error
 }
 
 // closers for those goroutines that need run backgroud when DB opened.
@@ -370,46 +369,46 @@ func (db *DBImpl) Write(options *WriteOptions, batch *WriteBatch) error {
 	return nil
 }
 
-func (db *DBImpl) TSWrite(options *WriteOptions, points []types.TSEntry) error {
-	if len(points) == 0 {
-		return ErrEmptyKey
-	}
-
-	wb := NewWriteBatch(db)
-
-	for _, point := range points {
-		//key := point.KeyStr()
-		//if options.Separate {
-		//	if _, exists := db.tsEntryCache[key]; !exists {
-		//		db.rwMu.Lock()
-		//		db.tsEntryCache[key] = []byte{}
-		//		db.rwMu.Unlock()
-		//	}
-		//	db.rwMu.Lock()
-		//	db.tsEntryCache[key] = append(db.tsEntryCache[key], point.GetBytes()...)
-		//	db.rwMu.Unlock()
-		//	if len(db.tsEntryCache[key]) > threshold {
-		//		intBytes := make([]byte, 8)
-		//		binary.BigEndian.PutUint64(intBytes, uint64(db.keyIndex[key]))
-		//		db.rwMu.Lock()
-		//		db.keyIndex[key]++
-		//		db.rwMu.Unlock()
-		//		wb.Put(append(point.Key(), intBytes...), db.tsEntryCache[key])
-		//		db.tsEntryCache[key] = db.tsEntryCache[key][:0]
-		//	}
-		//} else {
-		//	db.keyIndex[key]++
-		//	wb.Put(append(point.Key(), []byte(strconv.Itoa(db.keyIndex[key]))...), point.GetBytes())
-		//}
-		// db.keyIndex[key]++
-		db.idx.Add(1)
-		wb.Put(point.Key(), point.GetBytes())
-	}
-	if wb.sz != 0 {
-		return db.Write(options, wb)
-	}
-	return nil
-}
+//func (db *DBImpl) TSWrite(options *WriteOptions, points []types.TSEntry) error {
+//	if len(points) == 0 {
+//		return ErrEmptyKey
+//	}
+//
+//	wb := NewWriteBatch(db)
+//
+//	for _, point := range points {
+//		//key := point.KeyStr()
+//		//if options.Separate {
+//		//	if _, exists := db.tsEntryCache[key]; !exists {
+//		//		db.rwMu.Lock()
+//		//		db.tsEntryCache[key] = []byte{}
+//		//		db.rwMu.Unlock()
+//		//	}
+//		//	db.rwMu.Lock()
+//		//	db.tsEntryCache[key] = append(db.tsEntryCache[key], point.GetBytes()...)
+//		//	db.rwMu.Unlock()
+//		//	if len(db.tsEntryCache[key]) > threshold {
+//		//		intBytes := make([]byte, 8)
+//		//		binary.BigEndian.PutUint64(intBytes, uint64(db.keyIndex[key]))
+//		//		db.rwMu.Lock()
+//		//		db.keyIndex[key]++
+//		//		db.rwMu.Unlock()
+//		//		wb.Put(append(point.Key(), intBytes...), db.tsEntryCache[key])
+//		//		db.tsEntryCache[key] = db.tsEntryCache[key][:0]
+//		//	}
+//		//} else {
+//		//	db.keyIndex[key]++
+//		//	wb.Put(append(point.Key(), []byte(strconv.Itoa(db.keyIndex[key]))...), point.GetBytes())
+//		//}
+//		// db.keyIndex[key]++
+//		db.idx.Add(1)
+//		wb.Put(point.Key(), point.GetBytes())
+//	}
+//	if wb.sz != 0 {
+//		return db.Write(options, wb)
+//	}
+//	return nil
+//}
 
 func (db *DBImpl) doWrite(batch *WriteBatch) (*writeBatchInternel, error) {
 	if atomic.LoadInt32(&db.blockWrites) == 1 {

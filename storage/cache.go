@@ -39,7 +39,8 @@ type Comparator func([]byte, []byte) int
 type Cache struct {
 	head *Node
 
-	height     int32
+	height int32
+	// TODO： remove ref as it is very ugly
 	ref        int32
 	Handler    CloseHandler
 	comparator Comparator
@@ -66,7 +67,10 @@ func (n *Node) GetEntry() *types.Entry {
 }
 
 func (n *Node) setNexNode(height int, old *Node, new *Node) bool {
-	return atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(n.tower[height])), unsafe.Pointer(old), unsafe.Pointer(new))
+	if n.tower[height] == nil && old == nil {
+		return atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&n.tower[height])), unsafe.Pointer(nil), unsafe.Pointer(new))
+	}
+	return atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&n.tower[height])), unsafe.Pointer(old), unsafe.Pointer(new))
 }
 
 func newNode(key []byte, value types.Values, height int) *Node {

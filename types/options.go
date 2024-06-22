@@ -74,6 +74,8 @@ type Options struct {
 	VFileWriteParallelism int
 
 	Metric *metric.Metric
+
+	Sync bool
 }
 
 type ReadOptions struct {
@@ -120,5 +122,6 @@ func DefaultOptions(dir string) Options {
 		VerifyTableChecksum: false,
 		Separate:            true,
 		Metric:              &metric.Metric{},
+		Sync:                true,
 	}
 }

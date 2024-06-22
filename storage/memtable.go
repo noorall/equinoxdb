@@ -83,7 +83,11 @@ func OpenMemTable(fid, flags int, option equinox.Options) (*MemTable, error) {
 	// restore from wal
 	err = mt.restoreFromWAL()
 
-	return mt, errs.Error(err, "while restore from wal file")
+	if err != nil {
+		return nil, errs.Errorf(err, "while restoring memtable: %d", fid)
+	}
+
+	return mt, nil
 }
 
 func (m *MemTable) WriteMulti(values map[string][]types.Value) error {
