@@ -3,6 +3,8 @@ package storage
 import (
 	"bytes"
 	"equinox/pkg/models"
+	"equinox/storage/compactor"
+	"equinox/storage/store"
 	"equinox/storage/types"
 	equinox "equinox/types"
 	"errors"
@@ -24,11 +26,16 @@ var (
 
 type Engine struct {
 	sync.RWMutex
+
 	mm *MemManager
 
-	option *equinox.Options
+	compactor *compactor.Compactor
+
+	filestore *store.FileStore
 
 	syncWrite bool
+
+	option *equinox.Options
 
 	logger *zap.Logger
 }
@@ -39,12 +46,17 @@ func NewEngine(option *equinox.Options) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Engine{
+	e := &Engine{
 		mm:        mm,
 		option:    option,
 		syncWrite: option.Sync,
 		logger:    logger,
-	}, nil
+	}
+	e.logger.Info("Starting memTable flush thread")
+	go func() {
+		_ = e.flushMemTable(e.closers.memtable)
+	}()
+	return e, nil
 }
 
 func (e *Engine) WritePoints(points []models.Point) error {

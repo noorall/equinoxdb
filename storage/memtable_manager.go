@@ -24,7 +24,6 @@ import (
 	"equinox/storage/types"
 	equinox "equinox/types"
 	"errors"
-	"fmt"
 	"go.uber.org/zap"
 	"os"
 	"sort"
@@ -108,7 +107,7 @@ func (mm *MemManager) EnsureMemForWrite() error {
 	}
 }
 
-func (mm *MemManager) SnapshotOne() *MemTable {
+func (mm *MemManager) TakeFlushMemTable() *MemTable {
 	mt, ok := <-mm.flushCh
 	if ok {
 		return mt
@@ -116,15 +115,14 @@ func (mm *MemManager) SnapshotOne() *MemTable {
 	return nil
 }
 
-func (mm *MemManager) ClearSnapshot(mt *MemTable) error {
+func (mm *MemManager) OnMemTableFlushed(mt *MemTable) {
 	mm.Lock()
 	defer mm.Unlock()
 	if mm.imm[0] != mt {
-		return fmt.Errorf("Faild to clear snapshot ! ")
+		return
 	}
 	mm.imm = mm.imm[1:]
 	mt.DecrRef()
-	return nil
 }
 
 func (mm *MemManager) newMemTable() (*MemTable, error) {
