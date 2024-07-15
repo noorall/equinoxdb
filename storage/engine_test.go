@@ -38,4 +38,5 @@ func TestWritePoints(t *testing.T) {
 	err := e.WritePoints(points)
 	err = e.WritePoints(points)
 	require.NoError(t, err)
+	time.Sleep(10000 * time.Second)
 }

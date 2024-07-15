@@ -43,8 +43,6 @@ var (
 	bytesSyncPool = pool.NewBytesSyncPool()
 )
 
-type walker func(e *WALEntry) error
-
 type WALEntry interface {
 	Type() WalEntryType
 	Encode(dst []byte) ([]byte, error)
@@ -654,5 +652,5 @@ func (f *WalFile) write(data []byte) error {
 }
 
 func walFilePath(dir string, fid int) string {
-	return filepath.Join(dir, fmt.Sprintf("%05d%s", fid, WALFileExtension))
+	return filepath.Join(dir, fmt.Sprintf("%09d%s", fid, WALFileExtension))
 }

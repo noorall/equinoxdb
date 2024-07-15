@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package storage
+package memory
 
 import (
 	"bytes"
@@ -31,7 +31,7 @@ import (
 )
 
 type MemTable struct {
-	cache *Cache
+	Cache *Cache
 	wal   *store.WalFile
 	buf   *bytes.Buffer
 
@@ -57,7 +57,7 @@ func OpenMemTable(fid, flags int, option equinox.Options) (*MemTable, error) {
 	cache := NewCache(option.Comparator)
 
 	mt := &MemTable{
-		cache:  cache,
+		Cache:  cache,
 		option: option,
 		buf:    &bytes.Buffer{},
 	}
@@ -101,9 +101,9 @@ func (m *MemTable) WriteMulti(values map[string][]types.Value) error {
 	}
 
 	for k, v := range values {
-		err := m.cache.Put([]byte(k), v)
+		err := m.Cache.Put([]byte(k), v)
 		if err != nil {
-			return errs.Errorf(err, "while writing values to cache")
+			return errs.Errorf(err, "while writing values to Cache")
 		}
 	}
 	return nil
@@ -115,8 +115,8 @@ func (m *MemTable) Delete(keys [][]byte) {
 
 func (m *MemTable) DeleteRange(keys [][]byte, min, max int64) {
 	for _, k := range keys {
-		// Make sure key exist in the cache, skip if it does not
-		e := m.cache.Get(k)
+		// Make sure key exist in the Cache, skip if it does not
+		e := m.Cache.Get(k)
 		if e == nil {
 			continue
 		}
@@ -125,12 +125,12 @@ func (m *MemTable) DeleteRange(keys [][]byte, min, max int64) {
 			e.Clean()
 		}
 		e.Filter(min, max)
-		m.cache.DecreaseSize(origSize - uint32(e.Size()))
+		m.Cache.DecreaseSize(origSize - uint32(e.Size()))
 	}
 }
 
 func (m *MemTable) IsFull() bool {
-	if m.cache.Size() >= uint32(m.option.MemTableSize) {
+	if m.Cache.Size() >= uint32(m.option.MemTableSize) {
 		return true
 	}
 
@@ -142,15 +142,15 @@ func (m *MemTable) SyncWAL() error {
 }
 
 func (m *MemTable) IncrRef() {
-	m.cache.Ref()
+	m.Cache.Ref()
 }
 
 func (m *MemTable) DecrRef() {
-	m.cache.Deref()
+	m.Cache.Deref()
 }
 
 func (m *MemTable) restoreFromWAL() error {
-	if m.wal == nil || m.cache == nil {
+	if m.wal == nil || m.Cache == nil {
 		return nil
 	}
 	r := store.NewWALReader(m.wal.NewReader(0))

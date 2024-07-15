@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package storage
+package memory
 
 import (
 	"equinox/storage/errs"
@@ -93,7 +93,7 @@ func (mm *MemManager) EnsureMemForWrite() error {
 	var err error
 	select {
 	case mm.flushCh <- mm.mem:
-		mm.logger.Debug("Flushing memTable ", zap.Uint32("size", mm.mem.cache.Size()), zap.Int("flushCh", len(mm.flushCh)))
+		mm.logger.Debug("Flushing memTable ", zap.Uint32("size", mm.mem.Cache.Size()), zap.Int("flushCh", len(mm.flushCh)))
 
 		mm.imm = append(mm.imm, mm.mem)
 		mm.mem, err = mm.newMemTable()
@@ -169,7 +169,7 @@ func (mm *MemManager) restoreMemTables() error {
 		}
 		// If this memTable is empty we don't need to add it. This is a
 		// memTable that was completely truncated.
-		if mt.cache.Empty() {
+		if mt.Cache.Empty() {
 			mt.DecrRef()
 			continue
 		}

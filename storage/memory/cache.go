@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package storage
+package memory
 
 import (
 	"equinox/storage/codec"

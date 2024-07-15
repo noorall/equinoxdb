@@ -2,8 +2,11 @@ package storage
 
 import (
 	"bytes"
+	"context"
+	"equinox/internel"
 	"equinox/pkg/models"
 	"equinox/storage/compactor"
+	"equinox/storage/memory"
 	"equinox/storage/store"
 	"equinox/storage/types"
 	equinox "equinox/types"
@@ -24,13 +27,21 @@ var (
 	emptyBytes             = []byte{}
 )
 
+type closers struct {
+	compact  *internel.Closer
+	memTable *internel.Closer
+	writes   *internel.Closer
+	valueGC  *internel.Closer
+}
+
 type Engine struct {
 	sync.RWMutex
 
-	mm *MemManager
+	mm *memory.MemManager
 
 	compactor *compactor.Compactor
 
+	// 管理lsm中的文件
 	filestore *store.FileStore
 
 	syncWrite bool
@@ -38,24 +49,45 @@ type Engine struct {
 	option *equinox.Options
 
 	logger *zap.Logger
+
+	closers closers
 }
 
 func NewEngine(option *equinox.Options) (*Engine, error) {
 	logger := zap.NewNop()
-	mm, err := NewMemManager(option, logger)
+	mm, err := memory.NewMemManager(option, logger)
 	if err != nil {
 		return nil, err
 	}
+
+	// TODO: optimize this part
+	fs := store.NewFileStore(option.Dir)
+
+	c := compactor.NewCompactor()
+	c.Dir = option.Dir
+	c.FileStore = fs
+
 	e := &Engine{
 		mm:        mm,
 		option:    option,
 		syncWrite: option.Sync,
 		logger:    logger,
+		filestore: fs,
+		compactor: c,
 	}
+
+	if err = e.filestore.Open(context.Background()); err != nil {
+		return nil, err
+	}
+
+	e.compactor.Open()
+
 	e.logger.Info("Starting memTable flush thread")
+	e.closers.compact = internel.NewCloser(1)
 	go func() {
-		_ = e.flushMemTable(e.closers.memtable)
+		e.flushMemTable(e.closers.memTable)
 	}()
+
 	return e, nil
 }
 
@@ -115,7 +147,7 @@ func (e *Engine) WritePoints(points []models.Point) error {
 
 	var err error
 	i := 0
-	for err = e.mm.EnsureMemForWrite(); errors.Is(err, ErrNoRoom); err = e.mm.EnsureMemForWrite() {
+	for err = e.mm.EnsureMemForWrite(); errors.Is(err, memory.ErrNoRoom); err = e.mm.EnsureMemForWrite() {
 		i++
 
 		if i%100 == 0 {

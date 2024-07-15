@@ -13,10 +13,11 @@ func (e *Engine) flushMemTable(c *internel.Closer) {
 	for {
 		mt := e.mm.TakeFlushMemTable()
 		if mt == nil {
-			e.logger.Warn("flush: take a empty memTable")
+			e.logger.Warn("Flush: take a empty memTable, stop!")
+			return
 		}
 		for {
-			newFiles, err := e.compactor.WriteSnapshot(mt.cache, e.logger)
+			newFiles, err := e.compactor.WriteSnapshot(mt.Cache, e.logger)
 			if err != nil {
 				e.logger.Warn("Error writing memTable from compactor, retrying", zap.Error(err))
 				time.Sleep(time.Second)

@@ -196,9 +196,10 @@ type FileStore struct {
 	currentGeneration int
 	dir               string
 
-	files           []TSMFile
-	tsmMMAPWillNeed bool          // If true then the kernel will be advised MMAP_WILLNEED for TSM files.
-	openLimiter     limiter.Fixed // limit the number of concurrent opening TSM files.
+	files []TSMFile
+
+	TsmMMAPWillNeed bool          // If true then the kernel will be advised MMAP_WILLNEED for TSM files.
+	OpenLimiter     limiter.Fixed // limit the number of concurrent opening TSM files.
 
 	logger       *zap.Logger // Logger to be used for important messages
 	traceLogger  *zap.Logger // Logger to be used when trace-logging is on.
@@ -246,7 +247,7 @@ func NewFileStore(dir string) *FileStore {
 		lastModified: time.Time{},
 		logger:       logger,
 		traceLogger:  logger,
-		openLimiter:  limiter.NewFixed(runtime.GOMAXPROCS(0)),
+		OpenLimiter:  limiter.NewFixed(runtime.GOMAXPROCS(0)),
 		purger: &purger{
 			files:  map[string]TSMFile{},
 			logger: logger,
@@ -472,7 +473,7 @@ func (f *FileStore) Open(ctx context.Context) error {
 		return nil
 	}
 
-	if f.openLimiter == nil {
+	if f.OpenLimiter == nil {
 		return errors.New("cannot open FileStore without an OpenLimiter (is EngineOptions.OpenLimiter set?)")
 	}
 
@@ -537,15 +538,15 @@ func (f *FileStore) Open(ctx context.Context) error {
 			// Ensure a limited number of TSM files are loaded at once.
 			// Systems which have very large datasets (1TB+) can have thousands
 			// of TSM files which can cause extremely long load times.
-			if err := f.openLimiter.Take(ctx); err != nil {
+			if err := f.OpenLimiter.Take(ctx); err != nil {
 				f.logger.Error("Failed to open tsm file", zap.String("path", file.Name()), zap.Error(err))
 				readerC <- &res{err: fmt.Errorf("failed to open tsm file %q: %w", file.Name(), err)}
 				return
 			}
-			defer f.openLimiter.Release()
+			defer f.OpenLimiter.Release()
 
 			start := time.Now()
-			df, err := NewTSMReader(file, WithMadviseWillNeed(f.tsmMMAPWillNeed))
+			df, err := NewTSMReader(file, WithMadviseWillNeed(f.TsmMMAPWillNeed))
 			f.logger.Info("Opened file",
 				zap.String("path", file.Name()),
 				zap.Int("id", idx),
@@ -759,7 +760,7 @@ func (f *FileStore) replace(oldFiles, newFiles []string, updatedFn func(r []TSMF
 			}
 		}
 
-		tsm, err := NewTSMReader(fd, WithMadviseWillNeed(f.tsmMMAPWillNeed))
+		tsm, err := NewTSMReader(fd, WithMadviseWillNeed(f.TsmMMAPWillNeed))
 		if err != nil {
 			if newName != oldName {
 				if err1 := os.Rename(newName, oldName); err1 != nil {

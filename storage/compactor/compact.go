@@ -15,7 +15,7 @@ package compactor
 import (
 	"bytes"
 	"equinox/pkg/limiter"
-	"equinox/storage"
+	"equinox/storage/memory"
 	"equinox/storage/store"
 	"errors"
 	"fmt"
@@ -826,7 +826,7 @@ func (c *Compactor) EnableCompactions() {
 }
 
 // WriteSnapshot writes a Cache snapshot to one or more new TSM files.
-func (c *Compactor) WriteSnapshot(cache *storage.Cache, logger *zap.Logger) ([]string, error) {
+func (c *Compactor) WriteSnapshot(cache *memory.Cache, logger *zap.Logger) ([]string, error) {
 	c.mu.RLock()
 	enabled := c.snapshotsEnabled
 	intC := c.snapshotsInterrupt
@@ -863,11 +863,13 @@ func (c *Compactor) WriteSnapshot(cache *storage.Cache, logger *zap.Logger) ([]s
 
 	resC := make(chan res, concurrency)
 	for i := 0; i < concurrency; i++ {
-		go func(sp *storage.Cache) {
+		go func(sp *memory.Cache) {
 			iter := NewCacheKeyIterator(sp, intC)
+			defer func(iter KeyIterator) {
+				_ = iter.Close()
+			}(iter)
 			files, err := c.writeNewFiles(c.FileStore.NextGeneration(), 0, nil, iter, throttle, logger)
 			resC <- res{files: files, err: err}
-
 		}(splits[i])
 	}
 

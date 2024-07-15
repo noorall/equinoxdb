@@ -19,8 +19,8 @@
 package compactor
 
 import (
-	"equinox/storage"
 	"equinox/storage/codec"
+	"equinox/storage/memory"
 	"equinox/storage/types"
 	equinox "equinox/types"
 	"runtime"
@@ -28,11 +28,12 @@ import (
 )
 
 type cacheKeyIterator struct {
-	c         *storage.Cache
-	n         *storage.Node
-	size      int
-	nodes     []*storage.Node
-	blocks    map[*storage.Node][]cacheBlock
+	c     *memory.Cache
+	nodes []*memory.Node
+	size  int
+
+	i         int
+	blocks    [][]cacheBlock
 	ready     []chan struct{}
 	interrupt chan struct{}
 	err       error
@@ -44,7 +45,7 @@ type cacheBlock struct {
 	err              error
 }
 
-func NewCacheKeyIterator(c *storage.Cache, interrupt chan struct{}) KeyIterator {
+func NewCacheKeyIterator(c *memory.Cache, interrupt chan struct{}) KeyIterator {
 	nodes := c.GetAllNodes()
 	ready := make([]chan struct{}, len(nodes))
 	for i := 0; i < len(nodes); i++ {
@@ -54,15 +55,18 @@ func NewCacheKeyIterator(c *storage.Cache, interrupt chan struct{}) KeyIterator 
 		c:         c,
 		size:      equinox.DefaultMaxPointsPerBlock,
 		nodes:     nodes,
+		i:         -1,
 		ready:     ready,
-		blocks:    make(map[*storage.Node][]cacheBlock),
 		interrupt: interrupt,
+		blocks:    make([][]cacheBlock, len(nodes)),
 	}
 	it.c.Ref()
 	go it.encode()
 	return it
 }
+
 func (it *cacheKeyIterator) Read() ([]byte, int64, int64, []byte, error) {
+	// See if snapshot compactions were disabled while we were running.
 	select {
 	case <-it.interrupt:
 		it.err = errCompactionAborted{}
@@ -70,7 +74,7 @@ func (it *cacheKeyIterator) Read() ([]byte, int64, int64, []byte, error) {
 	default:
 	}
 
-	blk := it.blocks[it.n][0]
+	blk := it.blocks[it.i][0]
 	return blk.k, blk.minTime, blk.maxTime, blk.b, blk.err
 }
 
@@ -79,17 +83,20 @@ func (it *cacheKeyIterator) Err() error {
 }
 
 func (it *cacheKeyIterator) Next() bool {
-	if it.valid() {
-		if len(it.blocks[it.n]) > 0 {
-			it.blocks[it.n] = it.blocks[it.n][1:]
-			if len(it.blocks[it.n]) > 0 {
-				return true
-			}
+	if it.i >= 0 && it.i < len(it.ready) && len(it.blocks[it.i]) > 0 {
+		it.blocks[it.i] = it.blocks[it.i][1:]
+		if len(it.blocks[it.i]) > 0 {
+			return true
 		}
-		it.n = it.c.GetNext(it.n, 0)
-		return true
 	}
-	return false
+	it.i++
+
+	if it.i >= len(it.ready) {
+		return false
+	}
+
+	<-it.ready[it.i]
+	return true
 }
 
 func (it *cacheKeyIterator) EstimatedIndexSize() int {
@@ -103,10 +110,6 @@ func (it *cacheKeyIterator) EstimatedIndexSize() int {
 func (it *cacheKeyIterator) Close() error {
 	it.c.Deref()
 	return nil
-}
-
-func (it *cacheKeyIterator) valid() bool {
-	return it.n != nil
 }
 
 func (it *cacheKeyIterator) encode() {
@@ -172,7 +175,7 @@ func (it *cacheKeyIterator) encode() {
 
 					values = values[end:]
 
-					it.blocks[curNode] = append(it.blocks[curNode], cacheBlock{
+					it.blocks[curIdx] = append(it.blocks[curIdx], cacheBlock{
 						k:       key,
 						minTime: minTime,
 						maxTime: maxTime,
