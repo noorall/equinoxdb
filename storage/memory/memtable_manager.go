@@ -19,10 +19,10 @@
 package memory
 
 import (
+	"equinox/storage/config"
 	"equinox/storage/errs"
 	"equinox/storage/store"
 	"equinox/storage/types"
-	equinox "equinox/types"
 	"errors"
 	"go.uber.org/zap"
 	"os"
@@ -46,16 +46,16 @@ type MemManager struct {
 
 	flushCh chan *MemTable
 
-	option *equinox.Options
+	option config.Option
 
 	logger *zap.Logger
 }
 
-func NewMemManager(option *equinox.Options, logger *zap.Logger) (*MemManager, error) {
+func NewMemManager(opt config.Option, logger *zap.Logger) (*MemManager, error) {
 	mm := &MemManager{
-		imm:     make([]*MemTable, 0, option.NumMemtables),
-		flushCh: make(chan *MemTable, option.NumMemtables),
-		option:  option,
+		imm:     make([]*MemTable, 0, opt.NumMemTables),
+		flushCh: make(chan *MemTable, opt.NumMemTables),
+		option:  opt,
 		logger:  logger,
 	}
 	err := mm.restoreMemTables()
@@ -66,6 +66,13 @@ func NewMemManager(option *equinox.Options, logger *zap.Logger) (*MemManager, er
 		return nil, errs.Errorf(err, "cannot create empty memtable")
 	}
 	return mm, nil
+}
+
+func (mm *MemManager) Close() {
+	mm.Lock()
+	defer mm.Unlock()
+
+	close(mm.flushCh)
 }
 
 func (mm *MemManager) WriteMulti(values map[string][]types.Value, sync bool) error {
@@ -126,7 +133,7 @@ func (mm *MemManager) OnMemTableFlushed(mt *MemTable) {
 }
 
 func (mm *MemManager) newMemTable() (*MemTable, error) {
-	mem, err := NewMemTable(mm.nextMemFid, *mm.option)
+	mem, err := NewMemTable(mm.nextMemFid, mm.option)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +170,7 @@ func (mm *MemManager) restoreMemTables() error {
 	for _, fid := range fids {
 		flags := os.O_RDWR
 		var mt *MemTable
-		mt, err = OpenMemTable(fid, flags, *mm.option)
+		mt, err = OpenMemTable(fid, flags, mm.option)
 		if err != nil {
 			return errs.Errorf(err, "while opening fid: %d", fid)
 		}

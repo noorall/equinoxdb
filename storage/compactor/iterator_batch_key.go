@@ -1,10 +1,10 @@
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
+ * or more contributor license agreements.  See the NOTICE File
  * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
+ * regarding copyright ownership.  The ASF licenses this File
  * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
+ * "License"); you may not use this File except in compliance
  * with the License.  You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
@@ -62,7 +62,7 @@ type tsmBatchKeyIterator struct {
 	// tsmFiles are the string names of the files for use in tracking errors, ordered the same
 	// as iterators and buf
 	tsmFiles []string
-	// currentTsm is the current TSM file being iterated over
+	// currentTsm is the current TSM File being iterated over
 	currentTsm string
 
 	iterators []*store.BlockIterator
@@ -181,7 +181,7 @@ RETRY:
 		if iter.Next() {
 			key, minTime, maxTime, typ, _, b, err := iter.Read()
 			if err != nil {
-				it.AppendError(errBlockRead{it.currentTsm, err})
+				it.AppendError(ErrBlockRead{it.currentTsm, err})
 			}
 
 			// This block may have ranges of time removed from it that would
@@ -214,7 +214,7 @@ RETRY:
 				iter.Next()
 				key, minTime, maxTime, typ, _, b, err := iter.Read()
 				if err != nil {
-					it.AppendError(errBlockRead{it.currentTsm, err})
+					it.AppendError(ErrBlockRead{it.currentTsm, err})
 				}
 
 				tombstones := iter.R.TombstoneRange(key)
@@ -244,7 +244,7 @@ RETRY:
 		}
 
 		if iter.Err() != nil {
-			it.AppendError(errBlockRead{it.currentTsm, iter.Err()})
+			it.AppendError(ErrBlockRead{it.currentTsm, iter.Err()})
 		}
 	}
 
@@ -253,7 +253,7 @@ RETRY:
 	var minKey []byte
 	var minType byte
 	for _, b := range it.buf {
-		// block could be nil if the iterator has been exhausted for that file
+		// block could be nil if the iterator has been exhausted for that File
 		if len(b) == 0 {
 			continue
 		}
@@ -306,23 +306,23 @@ func (it *tsmBatchKeyIterator) merge() {
 	case types.BlockString:
 		it.mergeString()
 	default:
-		it.AppendError(errBlockRead{it.currentTsm, fmt.Errorf("unknown block type: %v", it.typ)})
+		it.AppendError(ErrBlockRead{it.currentTsm, fmt.Errorf("unknown block type: %v", it.typ)})
 	}
 }
 
 func (it *tsmBatchKeyIterator) handleEncodeError(err error, typ string) {
-	it.AppendError(errBlockRead{it.currentTsm, fmt.Errorf("encode error: unable to compress block type %s for key '%s': %v", typ, it.key, err)})
+	it.AppendError(ErrBlockRead{it.currentTsm, fmt.Errorf("encode error: unable to compress block type %s for key '%s': %v", typ, it.key, err)})
 }
 
 func (it *tsmBatchKeyIterator) handleDecodeError(err error, typ string) {
-	it.AppendError(errBlockRead{it.currentTsm, fmt.Errorf("decode error: unable to decompress block type %s for key '%s': %v", typ, it.key, err)})
+	it.AppendError(ErrBlockRead{it.currentTsm, fmt.Errorf("decode error: unable to decompress block type %s for key '%s': %v", typ, it.key, err)})
 }
 
 func (it *tsmBatchKeyIterator) Read() ([]byte, int64, int64, []byte, error) {
 	// See if compactions were disabled while we were running.
 	select {
 	case <-it.interrupt:
-		return nil, 0, 0, nil, errCompactionAborted{}
+		return nil, 0, 0, nil, ErrCompactionAborted{}
 	default:
 	}
 

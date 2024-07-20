@@ -19,6 +19,7 @@
 package memory
 
 import (
+	"bytes"
 	"equinox/storage/codec"
 	"equinox/storage/types"
 	equinox "equinox/types"
@@ -82,17 +83,14 @@ func newNode(key []byte, value types.Values, height int) *Node {
 	}
 }
 
-func NewCache(cmp Comparator) *Cache {
-	if cmp == nil {
-		panic("Unset the comparator for Cache!")
-	}
+func NewCache() *Cache {
 
 	head := newNode(nil, nil, maxHeight)
 
 	return &Cache{head: head,
 		height:     1,
 		ref:        1,
-		comparator: cmp,
+		comparator: bytes.Compare,
 	}
 }
 
@@ -223,9 +221,17 @@ func (c *Cache) Count() int {
 	return len(c.GetAllNodes())
 }
 
-// TODO: implements this part
-func (c *Cache) Split(n int) []*Cache {
-	return []*Cache{c}
+func (c *Cache) Split(n int) []*ReadableCache {
+	nodes := c.GetAllNodes()
+	total := len(nodes)
+	result := make([]*ReadableCache, 0, n)
+	for i := 0; i < n; i++ {
+		start := i * total / n
+		end := (i + 1) * total / n
+		result = append(result, &ReadableCache{c: c, nodes: nodes[start:end]})
+		c.Ref()
+	}
+	return result
 }
 
 func (c *Cache) GetAllNodes() []*Node {

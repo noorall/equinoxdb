@@ -51,7 +51,7 @@ type Options struct {
 	ValueThreshold     int
 
 	BlockSize int
-	tableSize uint64 // internel use only
+	tableSize uint64
 
 	BloomFalsePositive   float64
 	ZSTDCompressionLevel int

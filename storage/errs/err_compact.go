@@ -16,17 +16,28 @@
  * limitations under the License.
  */
 
-package storage
+package errs
 
-import (
-	"fmt"
-	"path/filepath"
-)
+import "fmt"
 
-const (
-	WALFileExtension = "wal"
-)
+type ErrCompactionInProgress struct {
+	err error
+}
 
-func walFilePath(dir string, fid int) string {
-	return filepath.Join(dir, fmt.Sprintf("%05d%s", fid, WALFileExtension))
+func (e ErrCompactionInProgress) Error() string {
+	if e.err != nil {
+		return fmt.Sprintf("compaction in progress: %s", e.err)
+	}
+	return "compaction in progress"
+}
+
+type ErrCompactionAborted struct {
+	err error
+}
+
+func (e ErrCompactionAborted) Error() string {
+	if e.err != nil {
+		return fmt.Sprintf("compaction aborted: %s", e.err)
+	}
+	return "compaction aborted"
 }

@@ -20,10 +20,10 @@ package memory
 
 import (
 	"bytes"
+	"equinox/storage/config"
 	"equinox/storage/errs"
 	"equinox/storage/store"
 	"equinox/storage/types"
-	equinox "equinox/types"
 	"fmt"
 	"log"
 	"math"
@@ -35,13 +35,13 @@ type MemTable struct {
 	wal   *store.WalFile
 	buf   *bytes.Buffer
 
-	option     equinox.Options
-	maxVersion uint64
-	NewTable   bool
+	maxMemTableSize int
+	maxVersion      uint64
+	NewTable        bool
 }
 
-func NewMemTable(id int, option equinox.Options) (*MemTable, error) {
-	mt, err := OpenMemTable(id, os.O_CREATE|os.O_RDWR, option)
+func NewMemTable(id int, opt config.Option) (*MemTable, error) {
+	mt, err := OpenMemTable(id, os.O_CREATE|os.O_RDWR, opt)
 	if err == nil && mt.NewTable {
 		return mt, nil
 	}
@@ -53,25 +53,25 @@ func NewMemTable(id int, option equinox.Options) (*MemTable, error) {
 	return nil, fmt.Errorf("file %s already exists", mt.wal.Fd.Name())
 }
 
-func OpenMemTable(fid, flags int, option equinox.Options) (*MemTable, error) {
-	cache := NewCache(option.Comparator)
+func OpenMemTable(fid, flags int, opt config.Option) (*MemTable, error) {
+	cache := NewCache()
 
 	mt := &MemTable{
-		Cache:  cache,
-		option: option,
-		buf:    &bytes.Buffer{},
+		Cache:           cache,
+		maxMemTableSize: opt.MaxMemTableSize,
+		buf:             &bytes.Buffer{},
 	}
 
-	mt.wal = store.NewWalFile(fid, option.Dir)
+	mt.wal = store.NewWalFile(fid, opt.Dir)
 
-	err := mt.wal.Open(flags, 2*option.MemTableSize)
+	err := mt.wal.Open(flags, 2*opt.MaxMemTableSize)
 	if err != nil {
 		return nil, errs.Errorf(err, "while opening memtable: %d", fid)
 	}
 
 	cache.Handler = func() {
 		if err = mt.wal.Delete(); err != nil {
-			option.Logger.Errorf("while deleting file: %d, errs: %v", fid, err)
+			opt.Logger.Error("Error while deleting file")
 		}
 	}
 
@@ -130,11 +130,11 @@ func (m *MemTable) DeleteRange(keys [][]byte, min, max int64) {
 }
 
 func (m *MemTable) IsFull() bool {
-	if m.Cache.Size() >= uint32(m.option.MemTableSize) {
+	if m.Cache.Size() >= uint32(m.maxMemTableSize) {
 		return true
 	}
 
-	return m.wal.Pos >= uint32(m.option.MemTableSize)
+	return m.wal.Pos >= uint32(m.maxMemTableSize)
 }
 
 func (m *MemTable) SyncWAL() error {

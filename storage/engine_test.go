@@ -1,10 +1,12 @@
 package storage
 
 import (
+	"context"
 	"equinox/pkg/models"
-	equinox "equinox/types"
+	"equinox/storage/config"
 	"github.com/stretchr/testify/require"
 	"io/ioutil"
+	"strings"
 	"testing"
 	"time"
 )
@@ -13,30 +15,30 @@ func getTestDB(t *testing.T) *Engine {
 	dir, err := ioutil.TempDir("/Users/noorall/GolandProjects/equinox/benchmark/write/db", "equinox-test")
 	require.NoError(t, err)
 
-	options := equinox.DefaultOptions(dir)
-	options.MemTableSize = 10
-	db, err := NewEngine(&options)
+	options := config.NewOption()
+	options.Dir = dir
+	db, err := NewEngine(options)
 	require.NoError(t, err)
-
 	return db
 }
 
 func TestWritePoints(t *testing.T) {
 	e := getTestDB(t)
+	_ = e.Open(context.Background())
+	line := "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz--\n" // 64 bytes
+	var builder strings.Builder
+	for i := 0; i < 64; i++ {
+		builder.WriteString(line)
+	}
+	data := builder.String()
 	fields := models.Fields{
-		"field1": 1,
-		"field4": 3,
+		"field1": data,
+		"field4": data,
 	}
-	points := make([]models.Point, 0)
-	p, _ := models.NewPoint("hh", fields, time.Now())
-	fields2 := models.Fields{
-		"field2": 2,
+	for i := 0; i < 2621440/2; i++ {
+		p, _ := models.NewPoint("hh", fields, time.Now())
+		_ = e.WritePoints([]models.Point{p})
 	}
-	p2, _ := models.NewPoint("hh", fields2, time.Now())
-	points = append(points, p)
-	points = append(points, p2)
-	err := e.WritePoints(points)
-	err = e.WritePoints(points)
+	err := e.Close()
 	require.NoError(t, err)
-	time.Sleep(10000 * time.Second)
 }

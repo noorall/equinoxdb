@@ -3,13 +3,13 @@ package storage
 import (
 	"bytes"
 	"context"
-	"equinox/internel"
+	"equinox/pkg/limiter"
 	"equinox/pkg/models"
 	"equinox/storage/compactor"
+	"equinox/storage/config"
 	"equinox/storage/memory"
 	"equinox/storage/store"
 	"equinox/storage/types"
-	equinox "equinox/types"
 	"errors"
 	"fmt"
 	"go.uber.org/zap"
@@ -22,73 +22,86 @@ const (
 )
 
 var (
-	timeBytes              = []byte("time")
-	keyFieldSeparatorBytes = []byte(keyFieldSeparator)
-	emptyBytes             = []byte{}
+	timeBytes = []byte("time")
 )
 
-type closers struct {
-	compact  *internel.Closer
-	memTable *internel.Closer
-	writes   *internel.Closer
-	valueGC  *internel.Closer
-}
-
 type Engine struct {
-	sync.RWMutex
+	mu sync.RWMutex
 
-	mm *memory.MemManager
+	mm       *memory.MemManager
+	snapDone chan struct{}
+	snapWG   *sync.WaitGroup
 
-	compactor *compactor.Compactor
+	compactor         *compactor.Compactor
+	compactionDone    chan struct{}
+	compactionWG      *sync.WaitGroup
+	compactionPlan    compactor.CompactionPlanner
+	levelWorkers      int
+	scheduler         *scheduler
+	compactionLimiter limiter.Fixed
+	activeCompactions *compactionCounter
 
-	// 管理lsm中的文件
 	filestore *store.FileStore
 
 	syncWrite bool
 
-	option *equinox.Options
+	option config.Option
 
 	logger *zap.Logger
-
-	closers closers
 }
 
-func NewEngine(option *equinox.Options) (*Engine, error) {
+func NewEngine(opt config.Option) (*Engine, error) {
 	logger := zap.NewNop()
-	mm, err := memory.NewMemManager(option, logger)
+	mm, err := memory.NewMemManager(opt, logger)
 	if err != nil {
 		return nil, err
 	}
 
 	// TODO: optimize this part
-	fs := store.NewFileStore(option.Dir)
+	fs := store.NewFileStore(opt.Dir)
+	fs.OpenLimiter = opt.OpenLimiter
 
 	c := compactor.NewCompactor()
-	c.Dir = option.Dir
+	c.Dir = opt.Dir
 	c.FileStore = fs
+	c.RateLimit = opt.CompactionThroughputLimiter
 
+	planner := compactor.NewDefaultPlanner(fs, opt.CompactFullWriteColdDuration)
+	activeCompactions := &compactionCounter{}
 	e := &Engine{
-		mm:        mm,
-		option:    option,
-		syncWrite: option.Sync,
-		logger:    logger,
-		filestore: fs,
-		compactor: c,
+		mm:                mm,
+		option:            opt,
+		syncWrite:         opt.SyncWrite,
+		logger:            logger,
+		filestore:         fs,
+		compactor:         c,
+		compactionPlan:    planner,
+		compactionLimiter: opt.CompactionLimiter,
+		activeCompactions: activeCompactions,
+		scheduler:         newScheduler(activeCompactions, opt.CompactionLimiter.Capacity()),
 	}
-
-	if err = e.filestore.Open(context.Background()); err != nil {
-		return nil, err
-	}
-
-	e.compactor.Open()
-
-	e.logger.Info("Starting memTable flush thread")
-	e.closers.compact = internel.NewCloser(1)
-	go func() {
-		e.flushMemTable(e.closers.memTable)
-	}()
 
 	return e, nil
+}
+func (e *Engine) Open(ctx context.Context) error {
+	if err := e.filestore.Open(ctx); err != nil {
+		return err
+	}
+	e.compactor.Open()
+	e.SetCompactionsEnabled(true)
+	return nil
+}
+func (e *Engine) Close() error {
+	time.Sleep(5 * time.Second)
+	e.SetCompactionsEnabled(false)
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.compactionDone = nil
+
+	err := e.filestore.Close()
+
+	return err
 }
 
 func (e *Engine) WritePoints(points []models.Point) error {
@@ -161,4 +174,8 @@ func (e *Engine) WritePoints(points []models.Point) error {
 
 func (e *Engine) DeleteSeriesRange(itr models.SeriesIterator, min, max int64) error {
 	return nil
+}
+
+func (e *Engine) LastModified() time.Time {
+	return e.filestore.LastModified()
 }

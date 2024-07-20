@@ -16,16 +16,14 @@
  * limitations under the License.
  */
 
-package errs
+package storage
 
-import (
-	"fmt"
-)
-
-var (
-	// ErrWALClosed is returned when attempting to write to a closed WAL file.
-	ErrWALClosed = fmt.Errorf("WAL closed")
-
-	// ErrWALCorrupt is returned when reading a corrupt WAL entry.
-	ErrWALCorrupt = fmt.Errorf("corrupted WAL entry")
-)
+func (e *Engine) SetCompactionsEnabled(enabled bool) {
+	if enabled {
+		e.enableSnapshotCompactions()
+		e.enableLevelCompactions(false)
+	} else {
+		e.disableSnapshotCompactions()
+		e.disableLevelCompactions(false)
+	}
+}

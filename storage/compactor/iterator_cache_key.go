@@ -1,10 +1,10 @@
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
+ * or more contributor license agreements.  See the NOTICE File
  * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
+ * regarding copyright ownership.  The ASF licenses this File
  * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
+ * "License"); you may not use this File except in compliance
  * with the License.  You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
@@ -28,7 +28,7 @@ import (
 )
 
 type cacheKeyIterator struct {
-	c     *memory.Cache
+	c     *memory.ReadableCache
 	nodes []*memory.Node
 	size  int
 
@@ -45,7 +45,7 @@ type cacheBlock struct {
 	err              error
 }
 
-func NewCacheKeyIterator(c *memory.Cache, interrupt chan struct{}) KeyIterator {
+func NewCacheKeyIterator(c *memory.ReadableCache, interrupt chan struct{}) KeyIterator {
 	nodes := c.GetAllNodes()
 	ready := make([]chan struct{}, len(nodes))
 	for i := 0; i < len(nodes); i++ {
@@ -60,7 +60,6 @@ func NewCacheKeyIterator(c *memory.Cache, interrupt chan struct{}) KeyIterator {
 		interrupt: interrupt,
 		blocks:    make([][]cacheBlock, len(nodes)),
 	}
-	it.c.Ref()
 	go it.encode()
 	return it
 }
@@ -69,7 +68,7 @@ func (it *cacheKeyIterator) Read() ([]byte, int64, int64, []byte, error) {
 	// See if snapshot compactions were disabled while we were running.
 	select {
 	case <-it.interrupt:
-		it.err = errCompactionAborted{}
+		it.err = ErrCompactionAborted{}
 		return nil, 0, 0, nil, it.err
 	default:
 	}
@@ -108,7 +107,7 @@ func (it *cacheKeyIterator) EstimatedIndexSize() int {
 }
 
 func (it *cacheKeyIterator) Close() error {
-	it.c.Deref()
+	it.c.Close()
 	return nil
 }
 

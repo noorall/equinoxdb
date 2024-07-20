@@ -17,23 +17,3 @@
  */
 
 package compactor
-
-// KeyIterator allows iteration over set of keys and values in sorted order.
-type KeyIterator interface {
-	// Next returns true if there are any values remaining in the iterator.
-	Next() bool
-
-	// Read returns the key, time range, and raw data for the next block,
-	// or any error that occurred.
-	Read() (key []byte, minTime int64, maxTime int64, data []byte, err error)
-
-	// Close closes the iterator.
-	Close() error
-
-	// Err returns any errors encountered during iteration.
-	Err() error
-
-	// EstimatedIndexSize returns the estimated size of the index that would
-	// be required to store all the series and entries in the KeyIterator.
-	EstimatedIndexSize() int
-}
