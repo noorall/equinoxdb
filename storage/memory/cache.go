@@ -52,6 +52,8 @@ type Cache struct {
 type Node struct {
 	key []byte
 
+	lifeCycle int
+
 	entry *types.Entry
 
 	height uint16
@@ -61,6 +63,10 @@ type Node struct {
 
 func (n *Node) GetKey() []byte {
 	return n.key
+}
+
+func (n *Node) GetLifeCycle() int {
+	return n.lifeCycle
 }
 
 func (n *Node) GetEntry() *types.Entry {

@@ -65,6 +65,7 @@ func NewEngine(opt config.Option) (*Engine, error) {
 	c.Dir = opt.Dir
 	c.FileStore = fs
 	c.RateLimit = opt.CompactionThroughputLimiter
+	c.VFileManager = make(map[int]*store.VFileManager)
 
 	planner := compactor.NewDefaultPlanner(fs, opt.CompactFullWriteColdDuration)
 	activeCompactions := &compactionCounter{}
@@ -87,6 +88,11 @@ func (e *Engine) Open(ctx context.Context) error {
 	if err := e.filestore.Open(ctx); err != nil {
 		return err
 	}
+	vFileManager, err := store.NewVFileManager(e.option, models.Default)
+	if err != nil {
+		return err
+	}
+	e.compactor.VFileManager[models.Default] = vFileManager
 	e.compactor.Open()
 	e.SetCompactionsEnabled(true)
 	return nil

@@ -38,6 +38,7 @@ func TestWritePoints(t *testing.T) {
 	for i := 0; i < 2621440/2; i++ {
 		p, _ := models.NewPoint("hh", fields, time.Now())
 		_ = e.WritePoints([]models.Point{p})
+		time.Sleep(10 * time.Microsecond)
 	}
 	err := e.Close()
 	require.NoError(t, err)

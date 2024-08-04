@@ -86,6 +86,8 @@ type tsmBatchKeyIterator struct {
 	maxErrors int
 	// overflowErrors is the number of errors we have ignored.
 	overflowErrors int
+
+	separateEnabled bool
 }
 
 func (it *tsmBatchKeyIterator) AppendError(err error) bool {

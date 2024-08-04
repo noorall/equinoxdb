@@ -21,6 +21,7 @@ package compactor
 import (
 	"equinox/storage/codec"
 	"equinox/storage/memory"
+	"equinox/storage/store"
 	"equinox/storage/types"
 	equinox "equinox/types"
 	"runtime"
@@ -45,7 +46,7 @@ type cacheBlock struct {
 	err              error
 }
 
-func NewCacheKeyIterator(c *memory.ReadableCache, interrupt chan struct{}) KeyIterator {
+func NewCacheKeyIterator(c *memory.ReadableCache, interrupt chan struct{}, vfm map[int]*store.VFileManager) KeyIterator {
 	nodes := c.GetAllNodes()
 	ready := make([]chan struct{}, len(nodes))
 	for i := 0; i < len(nodes); i++ {
@@ -60,7 +61,7 @@ func NewCacheKeyIterator(c *memory.ReadableCache, interrupt chan struct{}) KeyIt
 		interrupt: interrupt,
 		blocks:    make([][]cacheBlock, len(nodes)),
 	}
-	go it.encode()
+	go it.encode(vfm)
 	return it
 }
 
@@ -111,7 +112,7 @@ func (it *cacheKeyIterator) Close() error {
 	return nil
 }
 
-func (it *cacheKeyIterator) encode() {
+func (it *cacheKeyIterator) encode(vfm map[int]*store.VFileManager) {
 	concurrency := runtime.GOMAXPROCS(0)
 	n := len(it.ready)
 
@@ -173,6 +174,8 @@ func (it *cacheKeyIterator) encode() {
 					}
 
 					values = values[end:]
+
+					b, err = vfm[curNode.GetLifeCycle()].WriteBlock(key, minTime, maxTime, b)
 
 					it.blocks[curIdx] = append(it.blocks[curIdx], cacheBlock{
 						k:       key,

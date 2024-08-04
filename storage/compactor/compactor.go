@@ -73,6 +73,8 @@ type Compactor struct {
 	compactionsInterrupt chan struct{}
 
 	files map[string]struct{}
+
+	VFileManager map[int]*store.VFileManager
 }
 
 // NewCompactor returns a new instance of Compactor.
@@ -206,7 +208,7 @@ func (c *Compactor) WriteSnapshot(cache *memory.Cache, logger *zap.Logger) ([]st
 	resC := make(chan res, concurrency)
 	for i := 0; i < concurrency; i++ {
 		go func(sp *memory.ReadableCache) {
-			iter := NewCacheKeyIterator(sp, intC)
+			iter := NewCacheKeyIterator(sp, intC, c.VFileManager)
 			defer func(iter KeyIterator) {
 				_ = iter.Close()
 			}(iter)

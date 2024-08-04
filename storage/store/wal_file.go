@@ -36,10 +36,13 @@ const (
 
 	// DeleteRangeWALEntryType indicates a delete range entry.
 	DeleteRangeWALEntryType WalEntryType = 0x03
+
+	// walEncodeBufSize is the size of the wal entry encoding buffer
+	walEncodeBufSize = 4 * 1024 * 1024
 )
 
 var (
-	bytesPool     = pool.NewBytes(256)
+	bytesPool     = pool.NewLimitedBytes(256, walEncodeBufSize*2)
 	bytesSyncPool = pool.NewBytesSyncPool()
 )
 

@@ -43,6 +43,7 @@ func (it *tsmBatchKeyIterator) mergeFloat() {
 // is true, all the blocks will be decoded, dedup and sorted in in order.  If dedup is false,
 // only blocks that are smaller than the chunk size will be decoded and combined.
 func (it *tsmBatchKeyIterator) combineFloat(dedup bool) blocks {
+	// TODO : midify this part
 	if dedup {
 		for it.mergedFloatValues.Len() < it.size && len(it.blocks) > 0 {
 			for len(it.blocks) > 0 && it.blocks[0].read() {
@@ -191,6 +192,7 @@ func (it *tsmBatchKeyIterator) combineFloat(dedup bool) blocks {
 	return it.chunkFloat(it.merged)
 }
 
+// 切块
 func (it *tsmBatchKeyIterator) chunkFloat(dst blocks) blocks {
 	if it.mergedFloatValues.Len() > it.size {
 		var values types.FloatArray

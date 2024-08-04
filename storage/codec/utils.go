@@ -72,6 +72,7 @@ func BlockCount(block []byte) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("BlockCount: error unpacking block: %v", err)
 	}
+	// TODO: add implement of ptr
 	return CountTimestamps(tb), nil
 }
 

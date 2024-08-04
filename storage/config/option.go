@@ -32,6 +32,7 @@ const (
 	DefaultNumMemTables                 = 4
 	DefaultMaxMemTableSize              = 64 << 20
 	DefaultMaxValueFileSize             = 1<<30 - 1
+	DefaultValueFileMaxEntries          = 4096
 )
 
 type Option struct {
@@ -47,7 +48,9 @@ type Option struct {
 	CompactionThroughputLimiter  limiter.Rate
 	CompactFullWriteColdDuration time.Duration
 
-	MaxValueFileSize int
+	ValueFileMaxSize     int
+	ValueFileMaxEntries  int
+	ValueFileOpenLimiter limiter.Fixed
 
 	Logger *zap.Logger
 }
@@ -63,7 +66,9 @@ func NewOption() Option {
 		CompactionThroughputLimiter:  limiter.NewRate(DefaultCompactThroughput, DefaultCompactThroughputBurst),
 		CompactFullWriteColdDuration: DefaultCompactFullWriteColdDuration,
 
-		MaxValueFileSize: DefaultMaxValueFileSize,
+		ValueFileMaxSize:     DefaultMaxValueFileSize,
+		ValueFileMaxEntries:  DefaultValueFileMaxEntries,
+		ValueFileOpenLimiter: limiter.NewFixed(runtime.GOMAXPROCS(0)),
 
 		Logger: zap.NewNop(),
 	}
