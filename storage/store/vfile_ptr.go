@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	ValuePtrSize = 32
+	ValuePtrSize = 34
 )
 
 type ValuePtr struct {
@@ -32,6 +32,7 @@ type ValuePtr struct {
 	Offset           int64
 	FileNo           uint32
 	Size             uint32
+	LifeCycle        int
 }
 
 func (v *ValuePtr) AppendTo(b []byte) []byte {
@@ -48,6 +49,7 @@ func (v *ValuePtr) AppendTo(b []byte) []byte {
 	binary.BigEndian.PutUint64(b[16:24], uint64(v.Offset))
 	binary.BigEndian.PutUint32(b[24:28], v.FileNo)
 	binary.BigEndian.PutUint32(b[28:32], v.Size)
+	binary.BigEndian.PutUint16(b[32:34], uint16(v.LifeCycle))
 
 	return b
 }
@@ -61,19 +63,29 @@ func (v *ValuePtr) UnmarshalBinary(b []byte) error {
 	v.Offset = int64(binary.BigEndian.Uint64(b[16:24]))
 	v.FileNo = binary.BigEndian.Uint32(b[24:28])
 	v.Size = binary.BigEndian.Uint32(b[28:32])
+	v.LifeCycle = int(binary.BigEndian.Uint16(b[32:34]))
 	return nil
 }
 
-type ValuePtrs struct {
-	ptrs []ValuePtr
+func EncodeValuePtrs(ptrs []ValuePtr) ([]byte, error) {
+	buf := make([]byte, len(ptrs)*ValuePtrSize)
+
+	for i, ptr := range ptrs {
+		ptr.AppendTo(buf[ValuePtrSize*i : ValuePtrSize*(i+1)-1])
+	}
+	return buf, nil
 }
 
-func (v *ValuePtrs) MarshalBinary() ([]byte, error) {
-	buf := make([]byte, len(v.ptrs)*ValuePtrSize)
-
-	for i, ptr := range v.ptrs {
-		ptr.AppendTo(buf[ValuePtrSize*i:])
+func DecodeValuePtrs(b []byte) ([]*ValuePtr, error) {
+	if len(b) < ValuePtrSize {
+		return nil, fmt.Errorf("unmarshalBinary: short buf: %v < %v", len(b), ValuePtrSize)
 	}
-
-	return buf, nil
+	count := len(b) / ValuePtrSize
+	ptrs := make([]*ValuePtr, count)
+	for i := 0; i < count; i++ {
+		v := &ValuePtr{}
+		_ = v.UnmarshalBinary(b[i*ValuePtrSize : i*ValuePtrSize-1])
+		ptrs[i] = v
+	}
+	return ptrs, nil
 }

@@ -49,9 +49,6 @@ func (e *Engine) disableSnapshotCompactions() {
 	default:
 	}
 
-	// close flush chain
-	e.mm.Close()
-
 	close(e.snapDone)
 	e.compactor.DisableSnapshots()
 	wg := e.snapWG

@@ -16,8 +16,25 @@
  * limitations under the License.
  */
 
-package compactor
+package storage
 
-func (it *tsmBatchKeyIterator) mergeVPtr() {
+import (
+	"bytes"
+	"sort"
+)
 
+// SeriesAndFieldFromCompositeKey returns the series key and the field key extracted from the composite key.
+func SeriesAndFieldFromCompositeKey(key []byte) ([]byte, []byte) {
+	series, field, _ := bytes.Cut(key, []byte(keyFieldSeparator))
+	return series, field
 }
+
+func Sort(a [][]byte) {
+	sort.Sort(byteSlices(a))
+}
+
+type byteSlices [][]byte
+
+func (a byteSlices) Len() int           { return len(a) }
+func (a byteSlices) Less(i, j int) bool { return bytes.Compare(a[i], a[j]) == -1 }
+func (a byteSlices) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }

@@ -40,6 +40,9 @@ const (
 	// BlockUnsigned designates a block encodes uint64 values.
 	BlockUnsigned = byte(4)
 
+	// BlockValuePtrMask we use the highest bit to determine whether it is Ptr
+	BlockValuePtrMask = byte(0x80)
+
 	// encodedBlockHeaderSize is the size of the header for an encoded block.  There is one
 	// byte encoding the type of the block.
 	encodedBlockHeaderSize = 1
@@ -54,13 +57,26 @@ func ZigZagDecode(v uint64) int64 {
 }
 
 func BlockType(block []byte) (byte, error) {
-	blockType := block[0]
+	blockType := block[0] & ^BlockValuePtrMask
 	switch blockType {
 	case BlockFloat64, BlockInteger, BlockUnsigned, BlockBoolean, BlockString:
 		return blockType, nil
 	default:
 		return 0, fmt.Errorf("unknown block type: %d", blockType)
 	}
+}
+
+func GetBaseType(b byte) byte {
+	return b & ^BlockValuePtrMask
+}
+
+func WithPtrFlag(b byte) byte {
+	return b | BlockValuePtrMask
+}
+
+func IsPtrBlock(block []byte) bool {
+	blockType := block[0]
+	return (blockType & BlockValuePtrMask) != 0
 }
 
 func BlockCount(block []byte) (int, error) {

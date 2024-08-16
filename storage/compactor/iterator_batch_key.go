@@ -20,6 +20,7 @@ package compactor
 
 import (
 	"bytes"
+	"equinox/storage/codec"
 	"equinox/storage/store"
 	"equinox/storage/types"
 	"fmt"
@@ -87,7 +88,7 @@ type tsmBatchKeyIterator struct {
 	// overflowErrors is the number of errors we have ignored.
 	overflowErrors int
 
-	separateEnabled bool
+	vr *store.VFileRegionManager
 }
 
 func (it *tsmBatchKeyIterator) AppendError(err error) bool {
@@ -104,7 +105,7 @@ func (it *tsmBatchKeyIterator) AppendError(err error) bool {
 
 // NewTSMBatchKeyIterator returns a new TSM key iterator from readers.
 // size indicates the maximum number of values to encode in a single block.
-func NewTSMBatchKeyIterator(size int, fast bool, maxErrors int, interrupt chan struct{}, tsmFiles []string, readers ...*store.TSMReader) (KeyIterator, error) {
+func NewTSMBatchKeyIterator(size int, fast bool, maxErrors int, interrupt chan struct{}, vfm *store.VFileRegionManager, tsmFiles []string, readers ...*store.TSMReader) (KeyIterator, error) {
 	var iter []*store.BlockIterator
 	for _, r := range readers {
 		iter = append(iter, r.BlockIterator())
@@ -126,6 +127,7 @@ func NewTSMBatchKeyIterator(size int, fast bool, maxErrors int, interrupt chan s
 		mergedStringValues:   &types.StringArray{},
 		interrupt:            interrupt,
 		maxErrors:            maxErrors,
+		vr:                   vfm,
 	}, nil
 }
 
@@ -296,7 +298,7 @@ RETRY:
 
 // merge combines the next set of blocks into merged blocks.
 func (it *tsmBatchKeyIterator) merge() {
-	switch it.typ {
+	switch codec.GetBaseType(it.typ) {
 	case types.BlockFloat64:
 		it.mergeFloat()
 	case types.BlockInteger:

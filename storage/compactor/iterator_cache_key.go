@@ -46,7 +46,7 @@ type cacheBlock struct {
 	err              error
 }
 
-func NewCacheKeyIterator(c *memory.ReadableCache, interrupt chan struct{}, vfm map[int]*store.VFileManager) KeyIterator {
+func NewCacheKeyIterator(c *memory.ReadableCache, interrupt chan struct{}, vfm *store.VFileRegionManager) KeyIterator {
 	nodes := c.GetAllNodes()
 	ready := make([]chan struct{}, len(nodes))
 	for i := 0; i < len(nodes); i++ {
@@ -112,7 +112,7 @@ func (it *cacheKeyIterator) Close() error {
 	return nil
 }
 
-func (it *cacheKeyIterator) encode(vfm map[int]*store.VFileManager) {
+func (it *cacheKeyIterator) encode(vfm *store.VFileRegionManager) {
 	concurrency := runtime.GOMAXPROCS(0)
 	n := len(it.ready)
 
@@ -175,7 +175,11 @@ func (it *cacheKeyIterator) encode(vfm map[int]*store.VFileManager) {
 
 					values = values[end:]
 
-					b, err = vfm[curNode.GetLifeCycle()].WriteBlock(key, minTime, maxTime, b)
+					var vf *store.VFileManager
+					vf, err = vfm.GetOrCreateVFileManager(curNode.GetLifeCycle())
+					if err == nil {
+						b, err = vf.WriteBlock(key, minTime, maxTime, b)
+					}
 
 					it.blocks[curIdx] = append(it.blocks[curIdx], cacheBlock{
 						k:       key,

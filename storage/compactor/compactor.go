@@ -74,7 +74,7 @@ type Compactor struct {
 
 	files map[string]struct{}
 
-	VFileManager map[int]*store.VFileManager
+	VM *store.VFileRegionManager
 }
 
 // NewCompactor returns a new instance of Compactor.
@@ -208,7 +208,7 @@ func (c *Compactor) WriteSnapshot(cache *memory.Cache, logger *zap.Logger) ([]st
 	resC := make(chan res, concurrency)
 	for i := 0; i < concurrency; i++ {
 		go func(sp *memory.ReadableCache) {
-			iter := NewCacheKeyIterator(sp, intC, c.VFileManager)
+			iter := NewCacheKeyIterator(sp, intC, c.VM)
 			defer func(iter KeyIterator) {
 				_ = iter.Close()
 			}(iter)
@@ -300,7 +300,7 @@ func (c *Compactor) compact(fast bool, tsmFiles []string, logger *zap.Logger) ([
 		return nil, nil
 	}
 
-	tsm, err := NewTSMBatchKeyIterator(size, fast, DefaultMaxSavedErrors, intC, tsmFiles, trs...)
+	tsm, err := NewTSMBatchKeyIterator(size, fast, DefaultMaxSavedErrors, intC, c.VM, tsmFiles, trs...)
 	if err != nil {
 		return nil, err
 	}

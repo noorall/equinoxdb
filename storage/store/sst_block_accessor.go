@@ -49,6 +49,8 @@ type mmapAccessor struct {
 	f  *os.File
 
 	index *indirectIndex
+
+	vr *VFileRegionManager
 }
 
 func (m *mmapAccessor) init() (*indirectIndex, error) {
@@ -199,8 +201,20 @@ func (m *mmapAccessor) readBlock(entry *IndexEntry, values []types.Value) ([]typ
 		return nil, ErrTSMClosed
 	}
 	//TODO: Validate checksum
-	var err error
-	values, err = codec.DecodeBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
+	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])
+	if err == nil {
+		var buf []types.Value
+		values = values[:0]
+		for _, dataBlock := range dataBlocks {
+			buf, err = codec.DecodeBlock(dataBlock, buf)
+			if err != nil {
+				break
+			}
+			values = append(values, buf...)
+		}
+		types.Values(values).Deduplicate()
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -239,8 +253,9 @@ func (m *mmapAccessor) readAll(key []byte) ([]types.Value, error) {
 	defer m.mu.RUnlock()
 
 	var temp []types.Value
-	var err error
+	var tempBuf []types.Value
 	var values []types.Value
+	var err error
 	for _, block := range blocks {
 		var skip bool
 		for _, t := range tombstones {
@@ -257,11 +272,22 @@ func (m *mmapAccessor) readAll(key []byte) ([]types.Value, error) {
 		//TODO: Validate checksum
 		temp = temp[:0]
 		// The +4 is the 4 byte checksum length
-		temp, err = codec.DecodeBlock(m.b[block.Offset+4:block.Offset+int64(block.Size)], temp)
+		var dataBlocks [][]byte
+		dataBlocks, err = m.vr.ReadDataBlocks(m.b[block.Offset+4 : block.Offset+int64(block.Size)])
+
 		if err != nil {
 			return nil, err
 		}
 
+		for _, dataBlock := range dataBlocks {
+			tempBuf = tempBuf[:0]
+			tempBuf, err = codec.DecodeBlock(dataBlock, tempBuf)
+			if err != nil {
+				return nil, err
+			}
+			temp = append(temp, tempBuf...)
+		}
+		types.Values(temp).Deduplicate()
 		// Filter out any values that were deleted
 		for _, t := range tombstones {
 			temp = types.Values(temp).Exclude(t.Min, t.Max)
@@ -295,174 +321,4 @@ func (m *mmapAccessor) close() error {
 
 	m.b = nil
 	return m.f.Close()
-}
-
-func (m *mmapAccessor) readFloatBlock(entry *IndexEntry, values *[]types.FloatValue) ([]types.FloatValue, error) {
-	m.incAccess()
-
-	m.mu.RLock()
-	if int64(len(m.b)) < entry.Offset+int64(entry.Size) {
-		m.mu.RUnlock()
-		return nil, ErrTSMClosed
-	}
-
-	a, err := codec.DecodeFloatBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
-	m.mu.RUnlock()
-
-	if err != nil {
-		return nil, err
-	}
-
-	return a, nil
-}
-
-func (m *mmapAccessor) readFloatArrayBlock(entry *IndexEntry, values *types.FloatArray) error {
-	m.incAccess()
-
-	m.mu.RLock()
-	if int64(len(m.b)) < entry.Offset+int64(entry.Size) {
-		m.mu.RUnlock()
-		return ErrTSMClosed
-	}
-
-	err := codec.DecodeFloatArrayBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
-	m.mu.RUnlock()
-
-	return err
-}
-
-func (m *mmapAccessor) readIntegerBlock(entry *IndexEntry, values *[]types.IntegerValue) ([]types.IntegerValue, error) {
-	m.incAccess()
-
-	m.mu.RLock()
-	if int64(len(m.b)) < entry.Offset+int64(entry.Size) {
-		m.mu.RUnlock()
-		return nil, ErrTSMClosed
-	}
-
-	a, err := codec.DecodeIntegerBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
-	m.mu.RUnlock()
-
-	if err != nil {
-		return nil, err
-	}
-
-	return a, nil
-}
-
-func (m *mmapAccessor) readIntegerArrayBlock(entry *IndexEntry, values *types.IntegerArray) error {
-	m.incAccess()
-
-	m.mu.RLock()
-	if int64(len(m.b)) < entry.Offset+int64(entry.Size) {
-		m.mu.RUnlock()
-		return ErrTSMClosed
-	}
-
-	err := codec.DecodeIntegerArrayBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
-	m.mu.RUnlock()
-
-	return err
-}
-
-func (m *mmapAccessor) readUnsignedBlock(entry *IndexEntry, values *[]types.UnsignedValue) ([]types.UnsignedValue, error) {
-	m.incAccess()
-
-	m.mu.RLock()
-	if int64(len(m.b)) < entry.Offset+int64(entry.Size) {
-		m.mu.RUnlock()
-		return nil, ErrTSMClosed
-	}
-
-	a, err := codec.DecodeUnsignedBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
-	m.mu.RUnlock()
-
-	if err != nil {
-		return nil, err
-	}
-
-	return a, nil
-}
-
-func (m *mmapAccessor) readUnsignedArrayBlock(entry *IndexEntry, values *types.UnsignedArray) error {
-	m.incAccess()
-
-	m.mu.RLock()
-	if int64(len(m.b)) < entry.Offset+int64(entry.Size) {
-		m.mu.RUnlock()
-		return ErrTSMClosed
-	}
-
-	err := codec.DecodeUnsignedArrayBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
-	m.mu.RUnlock()
-
-	return err
-}
-
-func (m *mmapAccessor) readStringBlock(entry *IndexEntry, values *[]types.StringValue) ([]types.StringValue, error) {
-	m.incAccess()
-
-	m.mu.RLock()
-	if int64(len(m.b)) < entry.Offset+int64(entry.Size) {
-		m.mu.RUnlock()
-		return nil, ErrTSMClosed
-	}
-
-	a, err := codec.DecodeStringBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
-	m.mu.RUnlock()
-
-	if err != nil {
-		return nil, err
-	}
-
-	return a, nil
-}
-
-func (m *mmapAccessor) readStringArrayBlock(entry *IndexEntry, values *types.StringArray) error {
-	m.incAccess()
-
-	m.mu.RLock()
-	if int64(len(m.b)) < entry.Offset+int64(entry.Size) {
-		m.mu.RUnlock()
-		return ErrTSMClosed
-	}
-
-	err := codec.DecodeStringArrayBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
-	m.mu.RUnlock()
-
-	return err
-}
-
-func (m *mmapAccessor) readBooleanBlock(entry *IndexEntry, values *[]types.BooleanValue) ([]types.BooleanValue, error) {
-	m.incAccess()
-
-	m.mu.RLock()
-	if int64(len(m.b)) < entry.Offset+int64(entry.Size) {
-		m.mu.RUnlock()
-		return nil, ErrTSMClosed
-	}
-
-	a, err := codec.DecodeBooleanBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
-	m.mu.RUnlock()
-
-	if err != nil {
-		return nil, err
-	}
-
-	return a, nil
-}
-
-func (m *mmapAccessor) readBooleanArrayBlock(entry *IndexEntry, values *types.BooleanArray) error {
-	m.incAccess()
-
-	m.mu.RLock()
-	if int64(len(m.b)) < entry.Offset+int64(entry.Size) {
-		m.mu.RUnlock()
-		return ErrTSMClosed
-	}
-
-	err := codec.DecodeBooleanArrayBlock(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], values)
-	m.mu.RUnlock()
-
-	return err
 }

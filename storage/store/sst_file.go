@@ -212,6 +212,8 @@ type FileStore struct {
 	parseFileName ParseFileNameFunc
 
 	copyFiles bool
+
+	VM *VFileRegionManager
 }
 
 // FileStat holds information about a TSM file on disk.
@@ -546,7 +548,7 @@ func (f *FileStore) Open(ctx context.Context) error {
 			defer f.OpenLimiter.Release()
 
 			start := time.Now()
-			df, err := NewTSMReader(file, WithMadviseWillNeed(f.TsmMMAPWillNeed))
+			df, err := NewTSMReader(file, f.VM, WithMadviseWillNeed(f.TsmMMAPWillNeed))
 			f.logger.Info("Opened file",
 				zap.String("path", file.Name()),
 				zap.Int("id", idx),
@@ -760,7 +762,7 @@ func (f *FileStore) replace(oldFiles, newFiles []string, updatedFn func(r []TSMF
 			}
 		}
 
-		tsm, err := NewTSMReader(fd, WithMadviseWillNeed(f.TsmMMAPWillNeed))
+		tsm, err := NewTSMReader(fd, f.VM, WithMadviseWillNeed(f.TsmMMAPWillNeed))
 		if err != nil {
 			if newName != oldName {
 				if err1 := os.Rename(newName, oldName); err1 != nil {
@@ -908,6 +910,7 @@ func (f *FileStore) BlockCount(path string, idx int) int {
 				}
 			}
 			_, _, _, _, _, block, _ := iter.Read()
+			block, _ = f.getDataBlock(block)
 			// on Error, BlockCount(block) returns 0 for cnt
 			cnt, _ := codec.BlockCount(block)
 			return cnt
@@ -1114,6 +1117,26 @@ func (f *FileStore) CreateSnapshot() (string, error) {
 	}
 
 	return tmpPath, nil
+}
+
+func (f *FileStore) getDataBlock(block []byte) ([]byte, error) {
+	if codec.IsPtrBlock(block) {
+		vPtr := &ValuePtr{}
+		err := vPtr.UnmarshalBinary(block)
+		if err != nil {
+			return nil, err
+		}
+		var vm *VFileManager
+		vm, err = f.VM.GetVFileManager(vPtr.LifeCycle)
+		if err != nil {
+			return nil, err
+		}
+		block, err = vm.Read(vPtr)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return block, nil
 }
 
 type tsmReaders []TSMFile

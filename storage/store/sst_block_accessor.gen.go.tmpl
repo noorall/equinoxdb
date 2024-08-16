@@ -1,0 +1,65 @@
+package store
+
+import (
+	"equinox/storage/codec"
+	"equinox/storage/types"
+)
+
+{{range .}}
+func (m *mmapAccessor) read{{.Name}}Block(entry *IndexEntry, values *[]types.{{.Name}}Value) ([]types.{{.Name}}Value, error) {
+	m.incAccess()
+
+	m.mu.RLock()
+	if int64(len(m.b)) < entry.Offset+int64(entry.Size) {
+		m.mu.RUnlock()
+		return nil, ErrTSMClosed
+	}
+
+	var a []types.{{.Name}}Value
+	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])
+	if err == nil {
+		for _, dataBlock := range dataBlocks {
+			*values, err = codec.Decode{{.Name}}Block(dataBlock, values)
+			if err != nil {
+				break
+			}
+			a = append(a, *values...)
+		}
+		types.{{.Name}}Values(a).Deduplicate()
+	}
+
+	m.mu.RUnlock()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return a, nil
+}
+
+func (m *mmapAccessor) read{{.Name}}ArrayBlock(entry *IndexEntry, values *types.{{.Name}}Array) error {
+	m.incAccess()
+
+	m.mu.RLock()
+	if int64(len(m.b)) < entry.Offset+int64(entry.Size) {
+		m.mu.RUnlock()
+		return ErrTSMClosed
+	}
+
+	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])
+	if err == nil {
+		for _, dataBlock := range dataBlocks {
+			var tmp types.{{.Name}}Array
+			err = codec.Decode{{.Name}}ArrayBlock(dataBlock, &tmp)
+			if err != nil {
+				break
+			}
+			values.Merge(&tmp)
+		}
+	}
+	
+	m.mu.RUnlock()
+
+	return err
+}
+{{end}}

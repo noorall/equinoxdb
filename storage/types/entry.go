@@ -24,7 +24,7 @@ import (
 )
 
 type Entry struct {
-	mu     sync.RWMutex
+	sync.RWMutex
 	values Values
 	vType  byte
 }
@@ -71,25 +71,25 @@ func (e *Entry) Add(values []Value) error {
 	}
 
 	// Entry currently has no values, so add the new ones and we're done.
-	e.mu.Lock()
+	e.Lock()
 	if len(e.values) == 0 {
 		e.values = values
 		e.vType = valueType(values[0])
-		e.mu.Unlock()
+		e.Unlock()
 		return nil
 	}
 
 	// Append the new values to the existing ones...
 	e.values = append(e.values, values...)
-	e.mu.Unlock()
+	e.Unlock()
 	return nil
 }
 
 // Deduplicate sorts and orders the Entry's values. If values are already deduped and sorted,
 // the function does no work and simply returns.
 func (e *Entry) Deduplicate() {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.Lock()
+	defer e.Unlock()
 
 	if len(e.values) <= 1 {
 		return
@@ -99,33 +99,33 @@ func (e *Entry) Deduplicate() {
 
 // Count returns the number of values in this Entry.
 func (e *Entry) Count() int {
-	e.mu.RLock()
+	e.RLock()
 	n := len(e.values)
-	e.mu.RUnlock()
+	e.RUnlock()
 	return n
 }
 
 // Filter removes all values with timestamps between min and max inclusive.
 func (e *Entry) Filter(min, max int64) {
-	e.mu.Lock()
+	e.Lock()
 	if len(e.values) > 1 {
 		e.values = e.values.Deduplicate()
 	}
 	e.values = e.values.Exclude(min, max)
-	e.mu.Unlock()
+	e.Unlock()
 }
 
 // Size returns the size of this Entry in bytes.
 func (e *Entry) Size() int {
-	e.mu.RLock()
+	e.RLock()
 	sz := e.values.Size()
-	e.mu.RUnlock()
+	e.RUnlock()
 	return sz
 }
 
 func (e *Entry) Clean() {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.Lock()
+	defer e.Unlock()
 	e.values = e.values[:0]
 }
 

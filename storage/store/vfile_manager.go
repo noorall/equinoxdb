@@ -19,6 +19,7 @@
 package store
 
 import (
+	"equinox/storage/codec"
 	"equinox/storage/config"
 	"equinox/storage/errs"
 	"fmt"
@@ -149,18 +150,20 @@ func (v *VFileManager) WriteBlock(key []byte, minTime, maxTime int64, block []by
 		// optimize this part
 		curValueFile, err = v.flush(curValueFile)
 		if err != nil {
-			return nil, err
+			return block, err
 		}
 	}
 
 	end, err := curValueFile.WriteBlock(key, minTime, maxTime, block)
 
 	if err != nil {
-		return nil, err
+		return block, err
 	}
 
+	atomic.AddUint32(&v.writableLogOffset, uint32(len(key)+4+len(block)+VFileHeaderSize))
+
 	buf := make([]byte, ValuePtrSize+1)
-	buf[0] = block[0]
+	buf[0] = codec.WithPtrFlag(block[0])
 
 	p := ValuePtr{}
 	p.MinTime = minTime
@@ -178,6 +181,8 @@ func (v *VFileManager) Read(vp *ValuePtr) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer vf.lock.RUnlock()
+
 	return vf.readWithValPtr(vp)
 }
 

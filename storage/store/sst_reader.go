@@ -133,7 +133,7 @@ func (b *BlockIterator) Err() error {
 type tsmReaderOption func(*TSMReader)
 
 // NewTSMReader returns a new TSMReader from the given file.
-func NewTSMReader(f *os.File, options ...tsmReaderOption) (*TSMReader, error) {
+func NewTSMReader(f *os.File, vr *VFileRegionManager, options ...tsmReaderOption) (*TSMReader, error) {
 	t := &TSMReader{}
 	for _, option := range options {
 		option(t)
@@ -148,6 +148,7 @@ func NewTSMReader(f *os.File, options ...tsmReaderOption) (*TSMReader, error) {
 	t.accessor = &mmapAccessor{
 		f:            f,
 		mmapWillNeed: t.madviseWillNeed,
+		vr:           vr,
 	}
 
 	index, err := t.accessor.init()

@@ -45,6 +45,7 @@ type MemManager struct {
 	nextMemFid int
 
 	flushCh chan *MemTable
+	wg      sync.WaitGroup
 
 	option config.Option
 
@@ -71,7 +72,8 @@ func NewMemManager(opt config.Option, logger *zap.Logger) (*MemManager, error) {
 func (mm *MemManager) Close() {
 	mm.Lock()
 	defer mm.Unlock()
-
+	mm.wg.Wait()
+	_ = mm.mem.wal.CloseWithTruncate(int64(mm.mem.wal.Pos))
 	close(mm.flushCh)
 }
 
@@ -89,6 +91,48 @@ func (mm *MemManager) WriteMulti(values map[string][]types.Value, sync bool) err
 	return nil
 }
 
+func (mm *MemManager) DeleteRange(keys [][]byte, min, max int64) {
+	mm.Lock()
+	defer mm.Unlock()
+	mm.mem.DeleteRange(keys, min, max)
+	for _, m := range mm.imm {
+		m.DeleteRange(keys, min, max)
+	}
+}
+
+func (mm *MemManager) Values(key []byte) types.Values {
+	mm.RLock()
+	defer mm.RUnlock()
+
+	var sz int
+	var entries []*types.Entry
+
+	e := mm.mem.Cache.Get(key)
+	sz += e.Size()
+	e.Deduplicate()
+	entries = append(entries, e)
+
+	for _, m := range mm.imm {
+		ie := m.Cache.Get(key)
+		if ie != nil {
+			ie.Deduplicate()
+			sz += ie.Size()
+			entries = append(entries, ie)
+		}
+	}
+
+	values := make(types.Values, sz)
+	n := 0
+	for _, entry := range entries {
+		entry.RLock()
+		n += copy(values[n:], entry.Values())
+		entry.RUnlock()
+	}
+	values = values[:n]
+	values = values.Deduplicate()
+	return values
+}
+
 func (mm *MemManager) EnsureMemForWrite() error {
 	mm.Lock()
 	defer mm.Unlock()
@@ -101,7 +145,7 @@ func (mm *MemManager) EnsureMemForWrite() error {
 	select {
 	case mm.flushCh <- mm.mem:
 		mm.logger.Debug("Flushing memTable ", zap.Uint32("size", mm.mem.Cache.Size()), zap.Int("flushCh", len(mm.flushCh)))
-
+		mm.wg.Add(1)
 		mm.imm = append(mm.imm, mm.mem)
 		mm.mem, err = mm.newMemTable()
 		if err != nil {
@@ -129,6 +173,7 @@ func (mm *MemManager) OnMemTableFlushed(mt *MemTable) {
 		return
 	}
 	mm.imm = mm.imm[1:]
+	mm.wg.Done()
 	mt.DecrRef()
 }
 

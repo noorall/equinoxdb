@@ -48,9 +48,10 @@ type Option struct {
 	CompactionThroughputLimiter  limiter.Rate
 	CompactFullWriteColdDuration time.Duration
 
-	ValueFileMaxSize     int
-	ValueFileMaxEntries  int
-	ValueFileOpenLimiter limiter.Fixed
+	ValueFileMaxSize            int
+	ValueFileMaxEntries         int
+	ValueFileOpenLimiter        limiter.Fixed
+	ValueFileParallelismLimiter limiter.Fixed
 
 	Logger *zap.Logger
 }
@@ -66,9 +67,10 @@ func NewOption() Option {
 		CompactionThroughputLimiter:  limiter.NewRate(DefaultCompactThroughput, DefaultCompactThroughputBurst),
 		CompactFullWriteColdDuration: DefaultCompactFullWriteColdDuration,
 
-		ValueFileMaxSize:     DefaultMaxValueFileSize,
-		ValueFileMaxEntries:  DefaultValueFileMaxEntries,
-		ValueFileOpenLimiter: limiter.NewFixed(runtime.GOMAXPROCS(0)),
+		ValueFileMaxSize:            DefaultMaxValueFileSize,
+		ValueFileMaxEntries:         DefaultValueFileMaxEntries,
+		ValueFileOpenLimiter:        limiter.NewFixed(runtime.GOMAXPROCS(0)),
+		ValueFileParallelismLimiter: limiter.NewFixed(runtime.GOMAXPROCS(0)),
 
 		Logger: zap.NewNop(),
 	}

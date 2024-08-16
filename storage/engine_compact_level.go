@@ -112,7 +112,7 @@ func (e *Engine) disableLevelCompactions(wait bool) {
 }
 
 func (e *Engine) compact(wg *sync.WaitGroup) {
-	t := time.NewTicker(time.Second)
+	t := time.NewTicker(500 * time.Millisecond)
 	defer t.Stop()
 
 	for {
@@ -149,11 +149,11 @@ func (e *Engine) compact(wg *sync.WaitGroup) {
 			if level, runnable := e.scheduler.next(); runnable {
 				switch level {
 				case 1:
-					if e.compactLevel(level1Groups[0], 1, true, wg) {
+					if e.compactLevel(level1Groups[0], 1, false, wg) {
 						level1Groups = level1Groups[1:]
 					}
 				case 2:
-					if e.compactLevel(level2Groups[0], 2, true, wg) {
+					if e.compactLevel(level2Groups[0], 2, false, wg) {
 						level2Groups = level2Groups[1:]
 					}
 				case 3:

@@ -1,232 +1,252 @@
-package tsm1
+package compactor
 
 import (
+	"equinox/storage/codec"
+	"equinox/storage/types"
 	"sort"
-
-	"github.com/influxdata/influxdb/v2/tsdb"
 )
 
 {{range .}}
 // merge combines the next set of blocks into merged blocks.
-func (k *tsmBatchKeyIterator) merge{{.Name}}() {
+func (it *tsmBatchKeyIterator) merge{{.Name}}() {
 	// No blocks left, or pending merged values, we're done
-	if len(k.blocks) == 0 && len(k.merged) == 0 && k.merged{{.Name}}Values.Len() == 0 {
+	if len(it.blocks) == 0 && len(it.merged) == 0 && it.merged{{.Name}}Values.Len() == 0 {
 		return
 	}
 
-	sort.Stable(k.blocks)
+	sort.Stable(it.blocks)
 
-	dedup := k.merged{{.Name}}Values.Len() != 0
-	if len(k.blocks) > 0 && !dedup {
+	dedup := it.merged{{.Name}}Values.Len() != 0
+	if len(it.blocks) > 0 && !dedup {
 		// If we have more than one block or any partially tombstoned blocks, we many need to dedup
-		dedup = len(k.blocks[0].tombstones) > 0 || k.blocks[0].partiallyRead()
+		dedup = len(it.blocks[0].tombstones) > 0 || it.blocks[0].partiallyRead()
 
 		// Quickly scan each block to see if any overlap with the prior block, if they overlap then
 		// we need to dedup as there may be duplicate points now
-		for i := 1; !dedup && i < len(k.blocks); i++ {
-			dedup = k.blocks[i].partiallyRead() ||
-				k.blocks[i].overlapsTimeRange(k.blocks[i-1].minTime, k.blocks[i-1].maxTime) ||
-				len(k.blocks[i].tombstones) > 0
+		for i := 1; !dedup && i < len(it.blocks); i++ {
+			dedup = it.blocks[i].partiallyRead() ||
+				it.blocks[i].overlapsTimeRange(it.blocks[i-1].minTime, it.blocks[i-1].maxTime) ||
+				len(it.blocks[i].tombstones) > 0
 		}
 
 	}
 
-	k.merged = k.combine{{.Name}}(dedup)
+	it.merged = it.combine{{.Name}}(dedup)
 }
 
 // combine returns a new set of blocks using the current blocks in the buffers.  If dedup
 // is true, all the blocks will be decoded, dedup and sorted in in order.  If dedup is false,
 // only blocks that are smaller than the chunk size will be decoded and combined.
-func (k *tsmBatchKeyIterator) combine{{.Name}}(dedup bool) blocks {
+func (it *tsmBatchKeyIterator) combine{{.Name}}(dedup bool) blocks {
+	// TODO : optimize this part
 	if dedup {
-		for k.merged{{.Name}}Values.Len() < k.size && len(k.blocks) > 0 {
-			for len(k.blocks) > 0 && k.blocks[0].read() {
-				k.blocks = k.blocks[1:]
+		for it.merged{{.Name}}Values.Len() < it.size && len(it.blocks) > 0 {
+			for len(it.blocks) > 0 && it.blocks[0].read() {
+				it.blocks = it.blocks[1:]
 			}
 
-			if len(k.blocks) == 0 {
+			if len(it.blocks) == 0 {
 				break
 			}
-			first := k.blocks[0]
+			first := it.blocks[0]
 			minTime := first.minTime
 			maxTime := first.maxTime
 
 			// Adjust the min time to the start of any overlapping blocks.
-			for i := 0; i < len(k.blocks); i++ {
-				if k.blocks[i].overlapsTimeRange(minTime, maxTime) && !k.blocks[i].read() {
-					if k.blocks[i].minTime < minTime {
-						minTime = k.blocks[i].minTime
+			for i := 0; i < len(it.blocks); i++ {
+				if it.blocks[i].overlapsTimeRange(minTime, maxTime) && !it.blocks[i].read() {
+					if it.blocks[i].minTime < minTime {
+						minTime = it.blocks[i].minTime
 					}
-					if k.blocks[i].maxTime > minTime && k.blocks[i].maxTime < maxTime {
-						maxTime = k.blocks[i].maxTime
+					if it.blocks[i].maxTime > minTime && it.blocks[i].maxTime < maxTime {
+						maxTime = it.blocks[i].maxTime
 					}
 				}
 			}
 
 			// We have some overlapping blocks so decode all, append in order and then dedup
-			for i := 0; i < len(k.blocks); i++ {
-				if !k.blocks[i].overlapsTimeRange(minTime, maxTime) || k.blocks[i].read() {
+			for i := 0; i < len(it.blocks); i++ {
+				if !it.blocks[i].overlapsTimeRange(minTime, maxTime) || it.blocks[i].read() {
 					continue
 				}
 
-				var v tsdb.{{.Name}}Array
-				var err error
-				if err = Decode{{.Name}}ArrayBlock(k.blocks[i].b, &v); err != nil {
-					k.handleDecodeError(err, "{{.name}}")
-					return nil
-				}
+                var v types.{{.Name}}Array
+                var err error
+                dataBlocks, err := it.vr.ReadDataBlocks(it.blocks[i].b)
+                if err != nil {
+                    it.handleDecodeError(err, "{{.name}}")
+                    return nil
+                }
 
-				// Invariant: v.MaxTime() == k.blocks[i].maxTime
-				if k.blocks[i].maxTime != v.MaxTime() {
-					if maxTime == k.blocks[i].maxTime {
+                for _, b := range dataBlocks {
+                    var v2 types.{{.Name}}Array
+                    if err = codec.Decode{{.Name}}ArrayBlock(b, &v2); err != nil {
+                        it.handleDecodeError(err, "{{.name}}")
+                        return nil
+                    }
+                    v.Merge(&v2)
+                }
+
+				// Invariant: v.MaxTime() == it.blocks[i].maxTime
+				if it.blocks[i].maxTime != v.MaxTime() {
+					if maxTime == it.blocks[i].maxTime {
 						maxTime = v.MaxTime()
 					}
-					k.blocks[i].maxTime = v.MaxTime()
+					it.blocks[i].maxTime = v.MaxTime()
 				}
 
 				// Remove values we already read
-				v.Exclude(k.blocks[i].readMin, k.blocks[i].readMax)
+				v.Exclude(it.blocks[i].readMin, it.blocks[i].readMax)
 
 				// Filter out only the values for overlapping block
 				v.Include(minTime, maxTime)
 				if v.Len() > 0 {
 					// Record that we read a subset of the block
-					k.blocks[i].markRead(v.MinTime(), v.MaxTime())
+					it.blocks[i].markRead(v.MinTime(), v.MaxTime())
 				}
 
 				// Apply each tombstone to the block
-				for _, ts := range k.blocks[i].tombstones {
+				for _, ts := range it.blocks[i].tombstones {
 					v.Exclude(ts.Min, ts.Max)
 				}
 
-				k.merged{{.Name}}Values.Merge(&v)
+				it.merged{{.Name}}Values.Merge(&v)
 			}
 		}
 
 		// Since we combined multiple blocks, we could have more values than we should put into
-		// a single block.  We need to chunk them up into groups and re-encode them.
-		return k.chunk{{.Name}}(nil)
+		// a single blocit.  We need to chunk them up into groups and re-encode them.
+		return it.chunk{{.Name}}(nil)
 	} 
 	var i int
 
-	for ; i < len(k.blocks); i++ {
+	for ; i < len(it.blocks); i++ {
 
 		// skip this block if it's values were already read
-		if k.blocks[i].read() {
+		if it.blocks[i].read() {
 			continue
 		}
 
-		// if this block is already full, just add it as is
-		count, err := BlockCount(k.blocks[i].b)
-		if err != nil {
-		    k.AppendError(err)
-		    continue
+		// if this block is not a ptr block
+		if !codec.IsPtrBlock(it.blocks[i].b) {
+			// if this block is already full, just add it as is
+			count, err := codec.BlockCount(it.blocks[i].b)
+			if err != nil {
+				it.AppendError(err)
+				continue
+			}
+
+			if count < it.size {
+				break
+			}
 		}
 
-		if count < k.size {
-			break
-		}
-
-		k.merged = append(k.merged, k.blocks[i])
+		it.merged = append(it.merged, it.blocks[i])
 	}
 
-	if k.fast {
-		for i < len(k.blocks) {
+	if it.fast {
+		for i < len(it.blocks) {
 			// skip this block if it's values were already read
-			if k.blocks[i].read() {
+			if it.blocks[i].read() {
 				i++
 				continue
 			}
 
-			k.merged = append(k.merged, k.blocks[i])
+			it.merged = append(it.merged, it.blocks[i])
 			i++
 		}
 	}
 
 	// if we only have 1 blocks left, just append it as is and avoid decoding/recoding
-	if i == len(k.blocks)-1 {
-		if !k.blocks[i].read() {
-			k.merged = append(k.merged, k.blocks[i])
+	if i == len(it.blocks)-1 {
+		if !it.blocks[i].read() {
+			it.merged = append(it.merged, it.blocks[i])
 		}
 		i++
 	}
 
 	// The remaining blocks can be combined and we know that they do not overlap and
 	// so we can just append each, sort and re-encode.
-	for i < len(k.blocks) && k.merged{{.Name}}Values.Len() < k.size {
-		if k.blocks[i].read() {
+	for i < len(it.blocks) && it.merged{{.Name}}Values.Len() < it.size {
+		if it.blocks[i].read() {
 			i++
 			continue
 		}
 
-		var v tsdb.{{.Name}}Array
-		if err := Decode{{.Name}}ArrayBlock(k.blocks[i].b, &v); err != nil {
-			k.handleDecodeError(err, "{{.name}}")
+		if codec.IsPtrBlock(it.blocks[i].b) {
+			it.merged = it.chunkFloat(it.merged)
+			it.merged = append(it.merged, it.blocks[i])
+			continue
+		}
+
+		var v types.{{.Name}}Array
+		if err := codec.Decode{{.Name}}ArrayBlock(it.blocks[i].b, &v); err != nil {
+			it.handleDecodeError(err, "{{.name}}")
 			return nil
 		}
 
-		// Invariant: v.MaxTime() == k.blocks[i].maxTime
-		if k.blocks[i].maxTime != v.MaxTime() {
-			k.blocks[i].maxTime = v.MaxTime()
+		// Invariant: v.MaxTime() == it.blocks[i].maxTime
+		if it.blocks[i].maxTime != v.MaxTime() {
+			it.blocks[i].maxTime = v.MaxTime()
 		}
 
 		// Apply each tombstone to the block
-		for _, ts := range k.blocks[i].tombstones {
+		for _, ts := range it.blocks[i].tombstones {
 			v.Exclude(ts.Min, ts.Max)
 		}
 
-		k.blocks[i].markRead(k.blocks[i].minTime, k.blocks[i].maxTime)
+		it.blocks[i].markRead(it.blocks[i].minTime, it.blocks[i].maxTime)
 
-		k.merged{{.Name}}Values.Merge(&v)
+		it.merged{{.Name}}Values.Merge(&v)
 		i++
 	}
 
-	k.blocks = k.blocks[i:]
+	it.blocks = it.blocks[i:]
 
-	return k.chunk{{.Name}}(k.merged)
+	return it.chunk{{.Name}}(it.merged)
 }
 
-func (k *tsmBatchKeyIterator) chunk{{.Name}}(dst blocks) blocks {
-	if k.merged{{.Name}}Values.Len() > k.size {
-		var values tsdb.{{.Name}}Array
-		values.Timestamps = k.merged{{.Name}}Values.Timestamps[:k.size]
+func (it *tsmBatchKeyIterator) chunk{{.Name}}(dst blocks) blocks {
+	if it.merged{{.Name}}Values.Len() > it.size {
+		var values types.{{.Name}}Array
+		values.Timestamps = it.merged{{.Name}}Values.Timestamps[:it.size]
 		minTime, maxTime := values.Timestamps[0], values.Timestamps[len(values.Timestamps)-1]
-		values.Values = k.merged{{.Name}}Values.Values[:k.size]
+		values.Values = it.merged{{.Name}}Values.Values[:it.size]
 
-		cb, err := Encode{{.Name}}ArrayBlock(&values, nil) // TODO(edd): pool this buffer
+		cb, err := codec.Encode{{.Name}}ArrayBlock(&values, nil) // TODO(edd): pool this buffer
 		if err != nil {
-			k.handleEncodeError(err, "{{.name}}")
+			it.handleEncodeError(err, "{{.name}}")
 			return nil
 		}
 
 		dst = append(dst, &block{
 			minTime: minTime,
 			maxTime: maxTime,
-			key:     k.key,
+			key:     it.key,
 			b:       cb,
 		})
-		k.merged{{.Name}}Values.Timestamps = k.merged{{.Name}}Values.Timestamps[k.size:]
-		k.merged{{.Name}}Values.Values = k.merged{{.Name}}Values.Values[k.size:]
+		it.merged{{.Name}}Values.Timestamps = it.merged{{.Name}}Values.Timestamps[it.size:]
+		it.merged{{.Name}}Values.Values = it.merged{{.Name}}Values.Values[it.size:]
 		return dst
 	}
 
 	// Re-encode the remaining values into the last block
-	if k.merged{{.Name}}Values.Len() > 0 {
-		minTime, maxTime := k.merged{{.Name}}Values.Timestamps[0], k.merged{{.Name}}Values.Timestamps[len(k.merged{{.Name}}Values.Timestamps)-1]
-		cb, err := Encode{{.Name}}ArrayBlock(k.merged{{.Name}}Values, nil) // TODO(edd): pool this buffer
+	if it.merged{{.Name}}Values.Len() > 0 {
+		minTime, maxTime := it.merged{{.Name}}Values.Timestamps[0], it.merged{{.Name}}Values.Timestamps[len(it.merged{{.Name}}Values.Timestamps)-1]
+		cb, err := codec.Encode{{.Name}}ArrayBlock(it.merged{{.Name}}Values, nil) // TODO(edd): pool this buffer
 		if err != nil {
-			k.handleEncodeError(err, "{{.name}}")
+			it.handleEncodeError(err, "{{.name}}")
 			return nil
 		}
 
 		dst = append(dst, &block{
 			minTime: minTime,
 			maxTime: maxTime,
-			key:     k.key,
+			key:     it.key,
 			b:       cb,
 		})
-		k.merged{{.Name}}Values.Timestamps = k.merged{{.Name}}Values.Timestamps[:0]
-		k.merged{{.Name}}Values.Values = k.merged{{.Name}}Values.Values[:0]
+		it.merged{{.Name}}Values.Timestamps = it.merged{{.Name}}Values.Timestamps[:0]
+		it.merged{{.Name}}Values.Values = it.merged{{.Name}}Values.Values[:0]
 	}
 	return dst
 }
