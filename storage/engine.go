@@ -209,7 +209,7 @@ func (e *Engine) DeleteRangeBatch(keys [][]byte, min, max int64) error {
 	var overlapsTimeRangeMinMax bool
 	var overlapsTimeRangeMinMaxLock sync.Mutex
 
-	_ = e.filestore.Apply(context.Background(), func(r store.TSMFile) error {
+	_ = e.filestore.Apply(context.Background(), func(r store.SSTFile) error {
 		if r.OverlapsTimeRange(min, max) {
 			overlapsTimeRangeMinMaxLock.Lock()
 			overlapsTimeRangeMinMax = true
@@ -222,15 +222,15 @@ func (e *Engine) DeleteRangeBatch(keys [][]byte, min, max int64) error {
 		return nil
 	}
 	// Run the delete on each sst file in parallel
-	if err := e.filestore.Apply(context.Background(), func(r store.TSMFile) error {
+	if err := e.filestore.Apply(context.Background(), func(r store.SSTFile) error {
 		// See if this sst file contains the keys and time range
 		minKey, maxKey := keys[0], keys[len(keys)-1]
-		tsmMin, tsmMax := r.KeyRange()
+		sstMin, sstMax := r.KeyRange()
 
-		tsmMin, _ = SeriesAndFieldFromCompositeKey(tsmMin)
-		tsmMax, _ = SeriesAndFieldFromCompositeKey(tsmMax)
+		sstMin, _ = SeriesAndFieldFromCompositeKey(sstMin)
+		sstMax, _ = SeriesAndFieldFromCompositeKey(sstMax)
 
-		overlaps := bytes.Compare(tsmMin, maxKey) <= 0 && bytes.Compare(tsmMax, minKey) >= 0
+		overlaps := bytes.Compare(sstMin, maxKey) <= 0 && bytes.Compare(sstMax, minKey) >= 0
 		if !overlaps || !r.OverlapsTimeRange(min, max) {
 			return nil
 		}

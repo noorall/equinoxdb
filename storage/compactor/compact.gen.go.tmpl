@@ -8,7 +8,7 @@ import (
 
 {{range .}}
 // merge combines the next set of blocks into merged blocks.
-func (it *tsmBatchKeyIterator) merge{{.Name}}() {
+func (it *sstBatchKeyIterator) merge{{.Name}}() {
 	// No blocks left, or pending merged values, we're done
 	if len(it.blocks) == 0 && len(it.merged) == 0 && it.merged{{.Name}}Values.Len() == 0 {
 		return
@@ -37,7 +37,7 @@ func (it *tsmBatchKeyIterator) merge{{.Name}}() {
 // combine returns a new set of blocks using the current blocks in the buffers.  If dedup
 // is true, all the blocks will be decoded, dedup and sorted in in order.  If dedup is false,
 // only blocks that are smaller than the chunk size will be decoded and combined.
-func (it *tsmBatchKeyIterator) combine{{.Name}}(dedup bool) blocks {
+func (it *sstBatchKeyIterator) combine{{.Name}}(dedup bool) blocks {
 	// TODO : optimize this part
 	if dedup {
 		for it.merged{{.Name}}Values.Len() < it.size && len(it.blocks) > 0 {
@@ -72,7 +72,7 @@ func (it *tsmBatchKeyIterator) combine{{.Name}}(dedup bool) blocks {
 
                 var v types.{{.Name}}Array
                 var err error
-                dataBlocks, err := it.vr.ReadDataBlocks(it.blocks[i].b)
+                dataBlocks, err := it.vr.ReadDataBlocks(it.blocks[i].b, true, it.key)
                 if err != nil {
                     it.handleDecodeError(err, "{{.name}}")
                     return nil
@@ -206,7 +206,7 @@ func (it *tsmBatchKeyIterator) combine{{.Name}}(dedup bool) blocks {
 	return it.chunk{{.Name}}(it.merged)
 }
 
-func (it *tsmBatchKeyIterator) chunk{{.Name}}(dst blocks) blocks {
+func (it *sstBatchKeyIterator) chunk{{.Name}}(dst blocks) blocks {
 	if it.merged{{.Name}}Values.Len() > it.size {
 		var values types.{{.Name}}Array
 		values.Timestamps = it.merged{{.Name}}Values.Timestamps[:it.size]

@@ -47,7 +47,7 @@ type KeyCursor struct {
 }
 
 type location struct {
-	r     TSMFile
+	r     SSTFile
 	entry IndexEntry
 
 	readMin, readMax int64
@@ -108,7 +108,7 @@ func newKeyCursor(ctx context.Context, fs *FileStore, key []byte, t int64, ascen
 		sort.Sort(descLocations(c.seeks))
 	}
 
-	// Determine the distinct set of TSM files in use and mark then as in-use
+	// Determine the distinct set of SST files in use and mark then as in-use
 	for _, f := range c.seeks {
 		f.r.Ref()
 	}

@@ -210,7 +210,7 @@ func verifyVersion(r io.ReadSeeker) error {
 		return fmt.Errorf("init: error reading magic number of file: %v", err)
 	}
 	if binary.BigEndian.Uint32(b[:]) != MagicNumber {
-		return fmt.Errorf("can only read from tsm file")
+		return fmt.Errorf("can only read from sst file")
 	}
 	_, err = io.ReadFull(r, b[:1])
 	if err != nil {
@@ -223,19 +223,19 @@ func verifyVersion(r io.ReadSeeker) error {
 	return nil
 }
 
-// FormatFileNameFunc is executed when generating a new TSM filename.
+// FormatFileNameFunc is executed when generating a new SST filename.
 // Source filenames are provided via src.
 type FormatFileNameFunc func(generation, sequence int) string
 
-// DefaultFormatFileName is the default implementation to format TSM filenames.
+// DefaultFormatFileName is the default implementation to format SST filenames.
 func DefaultFormatFileName(generation, sequence int) string {
 	return fmt.Sprintf("%09d-%09d", generation, sequence)
 }
 
-// ParseFileNameFunc is executed when parsing a TSM filename into generation & sequence.
+// ParseFileNameFunc is executed when parsing a SST filename into generation & sequence.
 type ParseFileNameFunc func(name string) (generation, sequence int, err error)
 
-// DefaultParseFileName is used to parse the filenames of TSM files.
+// DefaultParseFileName is used to parse the filenames of SST files.
 func DefaultParseFileName(name string) (int, int, error) {
 	base := filepath.Base(name)
 	idx := strings.Index(base, ".")
@@ -261,4 +261,19 @@ func DefaultParseFileName(name string) (int, int, error) {
 	}
 
 	return int(generation), int(sequence), nil
+}
+
+func IsOverlapAny(r TimeRange, ranges []TimeRange) bool {
+	for _, tr := range ranges {
+		if tr.Max < r.Max {
+			continue
+		}
+		if tr.Min <= r.Min && tr.Max >= r.Max {
+			return true
+		}
+		if tr.Min > r.Min {
+			break
+		}
+	}
+	return false
 }

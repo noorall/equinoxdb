@@ -18,12 +18,8 @@
 
 package store
 
-import (
-	"equinox/internel"
-)
-
 type VFileReader struct {
-	f      *internel.MMapFile
+	f      *MMapFile
 	offset uint32
 }
 

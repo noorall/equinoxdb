@@ -70,6 +70,16 @@ func (r *VFileRegionManager) GetVFileManager(lifeCycle int) (*VFileManager, erro
 	return nil, fmt.Errorf("vfile not exist for lifeCycle %d", lifeCycle)
 }
 
+func (r *VFileRegionManager) GetAllVFileManager() map[int]*VFileManager {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var vms map[int]*VFileManager
+	for k, v := range r.vFileManagers {
+		vms[k] = v
+	}
+	return vms
+}
+
 func (r *VFileRegionManager) GetOrCreateVFileManager(lifeCycle int) (*VFileManager, error) {
 	err := r.RegisterRegion(lifeCycle)
 	if err != nil {
@@ -83,7 +93,7 @@ func (r *VFileRegionManager) GetOrCreateVFileManager(lifeCycle int) (*VFileManag
 	return nil, fmt.Errorf("vfile not exist for lifeCycle %d", lifeCycle)
 }
 
-func (r *VFileRegionManager) ReadDataBlocks(block []byte) ([][]byte, error) {
+func (r *VFileRegionManager) ReadDataBlocks(block []byte, markAsDelete bool, key []byte) ([][]byte, error) {
 	if codec.IsPtrBlock(block) {
 		vPtrs, err := DecodeValuePtrs(block)
 		if err != nil {
@@ -111,6 +121,8 @@ func (r *VFileRegionManager) ReadDataBlocks(block []byte) ([][]byte, error) {
 				dataBlocks[i], e = vm.Read(ptr)
 				if e != nil {
 					errCount++
+				} else if markAsDelete {
+					_ = vm.MarkAsDelete(key, ptr)
 				}
 			}(ptr, i)
 		}

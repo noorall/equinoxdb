@@ -12,10 +12,10 @@ import (
 func mmap(f *os.File, offset int64, length int) ([]byte, error) {
 	// anonymous mapping
 	if f == nil {
-		return unix.Mmap(-1, 0, length, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE)
+		return unix.Mmap(-1, offset, length, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE)
 	}
 
-	mmap, err := unix.Mmap(int(f.Fd()), 0, length, syscall.PROT_READ, syscall.MAP_SHARED)
+	mmap, err := unix.Mmap(int(f.Fd()), offset, length, syscall.PROT_READ, syscall.MAP_SHARED)
 	if err != nil {
 		return nil, err
 	}

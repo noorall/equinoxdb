@@ -12,7 +12,7 @@ func (m *mmapAccessor) read{{.Name}}Block(entry *IndexEntry, values *[]types.{{.
 	m.mu.RLock()
 	if int64(len(m.b)) < entry.Offset+int64(entry.Size) {
 		m.mu.RUnlock()
-		return nil, ErrTSMClosed
+		return nil, ErrSSTClosed
 	}
 
 	var a []types.{{.Name}}Value
@@ -43,7 +43,7 @@ func (m *mmapAccessor) read{{.Name}}ArrayBlock(entry *IndexEntry, values *types.
 	m.mu.RLock()
 	if int64(len(m.b)) < entry.Offset+int64(entry.Size) {
 		m.mu.RUnlock()
-		return ErrTSMClosed
+		return ErrSSTClosed
 	}
 
 	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])

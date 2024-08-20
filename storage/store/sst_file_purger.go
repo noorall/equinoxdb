@@ -27,13 +27,13 @@ import (
 type purger struct {
 	mu        sync.RWMutex
 	fileStore *FileStore
-	files     map[string]TSMFile
+	files     map[string]SSTFile
 	running   bool
 
 	logger *zap.Logger
 }
 
-func (p *purger) add(files []TSMFile) {
+func (p *purger) add(files []SSTFile) {
 	p.mu.Lock()
 	for _, f := range files {
 		p.files[f.Path()] = f

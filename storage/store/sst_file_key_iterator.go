@@ -24,14 +24,14 @@ import (
 )
 
 type keyIterator struct {
-	f   TSMFile
+	f   SSTFile
 	c   int // current key index
 	n   int // key count
 	key []byte
 	typ byte
 }
 
-func newKeyIterator(f TSMFile, seek []byte) *keyIterator {
+func newKeyIterator(f SSTFile, seek []byte) *keyIterator {
 	c, n := 0, f.KeyCount()
 	if len(seek) > 0 {
 		c = f.Seek(seek)
@@ -62,7 +62,7 @@ type mergeKeyIterator struct {
 	typ  byte
 }
 
-func newMergeKeyIterator(files []TSMFile, seek []byte) *mergeKeyIterator {
+func newMergeKeyIterator(files []SSTFile, seek []byte) *mergeKeyIterator {
 	m := &mergeKeyIterator{}
 	itrs := make(keyIterators, 0, len(files))
 	for _, f := range files {

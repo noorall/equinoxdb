@@ -7,7 +7,7 @@ type BatchDeleter interface {
 }
 
 type batchDelete struct {
-	r *TSMReader
+	r *SSTReader
 }
 
 func (b *batchDelete) DeleteRange(keys [][]byte, minTime, maxTime int64) error {
@@ -15,13 +15,13 @@ func (b *batchDelete) DeleteRange(keys [][]byte, minTime, maxTime int64) error {
 		return nil
 	}
 
-	// If the keys can't exist in this TSM file, skip it.
+	// If the keys can't exist in this SST file, skip it.
 	minKey, maxKey := keys[0], keys[len(keys)-1]
 	if !b.r.index.OverlapsKeyRange(minKey, maxKey) {
 		return nil
 	}
 
-	// If the timerange can't exist in this TSM file, skip it.
+	// If the timerange can't exist in this SST file, skip it.
 	if !b.r.index.OverlapsTimeRange(minTime, maxTime) {
 		return nil
 	}

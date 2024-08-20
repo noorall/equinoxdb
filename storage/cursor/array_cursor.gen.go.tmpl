@@ -20,7 +20,7 @@ type {{$type}} struct {
 		pos    int
 	}
 
-	tsm struct {
+	sst struct {
 		buf       {{$arrayType}}
 		values    {{$arrayType}}
 		pos       int
@@ -35,21 +35,21 @@ func New{{$Type}}() *{{$type}} {
 	c := &{{$type}}{
 		res: types.New{{.Name}}ArrayLen(config.DefaultMaxPointsPerBlock),
 	}
-	c.tsm.buf = types.New{{.Name}}ArrayLen(config.DefaultMaxPointsPerBlock)
+	c.sst.buf = types.New{{.Name}}ArrayLen(config.DefaultMaxPointsPerBlock)
 	return c
 }
 
-func (c *{{$type}}) Reset(seek, end int64, cacheValues types.Values, tsmKeyCursor *store.KeyCursor) {
+func (c *{{$type}}) Reset(seek, end int64, cacheValues types.Values, sstKeyCursor *store.KeyCursor) {
 c.end = end
 	c.cache.values = cacheValues
 	c.cache.pos = sort.Search(len(c.cache.values), func(i int) bool {
 		return c.cache.values[i].UnixNano() >= seek
 	})
 
-	c.tsm.keyCursor = tsmKeyCursor
-	c.tsm.values, _ = c.tsm.keyCursor.Read{{.Name}}ArrayBlock(c.tsm.buf)
-	c.tsm.pos = sort.Search(c.tsm.values.Len(), func(i int) bool {
-		return c.tsm.values.Timestamps[i] >= seek
+	c.sst.keyCursor = sstKeyCursor
+	c.sst.values, _ = c.sst.keyCursor.Read{{.Name}}ArrayBlock(c.sst.buf)
+	c.sst.pos = sort.Search(c.sst.values.Len(), func(i int) bool {
+		return c.sst.values.Timestamps[i] >= seek
 	})
 }
 
@@ -57,71 +57,71 @@ func (c *{{$type}}) Err() error        { return nil }
 
 // close closes the cursor and any dependent cursors.
 func (c *{{$type}}) Close() {
-	if c.tsm.keyCursor != nil {
-		c.tsm.keyCursor.Close()
-		c.tsm.keyCursor = nil
+	if c.sst.keyCursor != nil {
+		c.sst.keyCursor.Close()
+		c.sst.keyCursor = nil
 	}
 	c.cache.values = nil
-	c.tsm.values = nil
+	c.sst.values = nil
 }
 
 // Next returns the next key/value for the cursor.
 func (c *{{$type}}) Next() {{$arrayType}} {
 	pos := 0
 	cvals := c.cache.values
-	tvals := c.tsm.values
+	tvals := c.sst.values
 
 	c.res.Timestamps = c.res.Timestamps[:cap(c.res.Timestamps)]
 	c.res.Values = c.res.Values[:cap(c.res.Values)]
 
-	for pos < len(c.res.Timestamps) && c.tsm.pos < len(tvals.Timestamps) && c.cache.pos < len(cvals) {
+	for pos < len(c.res.Timestamps) && c.sst.pos < len(tvals.Timestamps) && c.cache.pos < len(cvals) {
 		ckey := cvals[c.cache.pos].UnixNano()
-		tkey := tvals.Timestamps[c.tsm.pos]
+		tkey := tvals.Timestamps[c.sst.pos]
 		if ckey == tkey {
 			c.res.Timestamps[pos] = ckey
 			c.res.Values[pos] = cvals[c.cache.pos].(types.{{.Name}}Value).RawValue()
 			c.cache.pos++
-			c.tsm.pos++
+			c.sst.pos++
 		} else if ckey < tkey {
 			c.res.Timestamps[pos] = ckey
 			c.res.Values[pos] = cvals[c.cache.pos].(types.{{.Name}}Value).RawValue()
 			c.cache.pos++
 		} else {
 			c.res.Timestamps[pos] = tkey
-			c.res.Values[pos] = tvals.Values[c.tsm.pos]
-			c.tsm.pos++
+			c.res.Values[pos] = tvals.Values[c.sst.pos]
+			c.sst.pos++
 		}
 
 		pos++
 
-		if c.tsm.pos >= len(tvals.Timestamps) {
-			tvals = c.nextTSM()
+		if c.sst.pos >= len(tvals.Timestamps) {
+			tvals = c.nextSST()
 		}
 	}
 
 	if pos < len(c.res.Timestamps) {
-		if c.tsm.pos < len(tvals.Timestamps) {
+		if c.sst.pos < len(tvals.Timestamps) {
 			if pos == 0 && len(c.res.Timestamps) >= len(tvals.Timestamps){
-				// optimization: all points can be served from TSM data because
+				// optimization: all points can be served from SST data because
 				// we need the entire block and the block completely fits within
 				// the buffer.
 				copy(c.res.Timestamps, tvals.Timestamps)
 				pos += copy(c.res.Values, tvals.Values)
-				c.nextTSM()
+				c.nextSST()
 			} else {
 				// copy as much as we can
-				n := copy(c.res.Timestamps[pos:], tvals.Timestamps[c.tsm.pos:])
-				copy(c.res.Values[pos:], tvals.Values[c.tsm.pos:])
+				n := copy(c.res.Timestamps[pos:], tvals.Timestamps[c.sst.pos:])
+				copy(c.res.Values[pos:], tvals.Values[c.sst.pos:])
 				pos += n
-				c.tsm.pos += n
-				if c.tsm.pos >= len(tvals.Timestamps) {
-					c.nextTSM()
+				c.sst.pos += n
+				if c.sst.pos >= len(tvals.Timestamps) {
+					c.nextSST()
 				}
 			}
 		}
 
 		if c.cache.pos < len(cvals) {
-			// TSM was exhausted
+			// SST was exhausted
 			for pos < len(c.res.Timestamps) && c.cache.pos < len(cvals) {
 				c.res.Timestamps[pos] = cvals[c.cache.pos].UnixNano()
 				c.res.Values[pos] = cvals[c.cache.pos].(types.{{.Name}}Value).RawValue()
@@ -146,11 +146,11 @@ func (c *{{$type}}) Next() {{$arrayType}} {
 	return c.res
 }
 
-func (c *{{$type}}) nextTSM() {{$arrayType}} {
-	c.tsm.keyCursor.Next()
-	c.tsm.values, _ = c.tsm.keyCursor.Read{{.Name}}ArrayBlock(c.tsm.buf)
-	c.tsm.pos = 0
-	return c.tsm.values
+func (c *{{$type}}) nextSST() {{$arrayType}} {
+	c.sst.keyCursor.Next()
+	c.sst.values, _ = c.sst.keyCursor.Read{{.Name}}ArrayBlock(c.sst.buf)
+	c.sst.pos = 0
+	return c.sst.values
 }
 
 {{$type := print .Name "ArrayDescendingCursor"}}
@@ -162,7 +162,7 @@ type {{$type}} struct {
 		pos    int
 	}
 
-	tsm struct {
+	sst struct {
 		buf       {{$arrayType}}
 		values    {{$arrayType}}
 		pos       int
@@ -177,11 +177,11 @@ func New{{$Type}}() *{{$type}} {
 	c := &{{$type}}{
 		res: types.New{{.Name}}ArrayLen(config.DefaultMaxPointsPerBlock),
 	}
-	c.tsm.buf = types.New{{.Name}}ArrayLen(config.DefaultMaxPointsPerBlock)
+	c.sst.buf = types.New{{.Name}}ArrayLen(config.DefaultMaxPointsPerBlock)
 	return c
 }
 
-func (c *{{$type}}) Reset(seek, end int64, cacheValues types.Values, tsmKeyCursor *store.KeyCursor) {
+func (c *{{$type}}) Reset(seek, end int64, cacheValues types.Values, sstKeyCursor *store.KeyCursor) {
 	// Search for the time value greater than the seek time (not included)
 	// and then move our position back one which will include the values in
 	// our time range.
@@ -192,74 +192,74 @@ func (c *{{$type}}) Reset(seek, end int64, cacheValues types.Values, tsmKeyCurso
 	})
 	c.cache.pos--
 
-	c.tsm.keyCursor = tsmKeyCursor
-	c.tsm.values, _ = c.tsm.keyCursor.Read{{.Name}}ArrayBlock(c.tsm.buf)
-	c.tsm.pos = sort.Search(c.tsm.values.Len(), func(i int) bool {
-		return c.tsm.values.Timestamps[i] > seek
+	c.sst.keyCursor = sstKeyCursor
+	c.sst.values, _ = c.sst.keyCursor.Read{{.Name}}ArrayBlock(c.sst.buf)
+	c.sst.pos = sort.Search(c.sst.values.Len(), func(i int) bool {
+		return c.sst.values.Timestamps[i] > seek
 	})
-	c.tsm.pos--
+	c.sst.pos--
 }
 
 func (c *{{$type}}) Err() error        { return nil }
 
 func (c *{{$type}}) Close() {
-	if c.tsm.keyCursor != nil {
-		c.tsm.keyCursor.Close()
-		c.tsm.keyCursor = nil
+	if c.sst.keyCursor != nil {
+		c.sst.keyCursor.Close()
+		c.sst.keyCursor = nil
 	}
 	c.cache.values = nil
-	c.tsm.values = nil
+	c.sst.values = nil
 }
 
 func (c *{{$type}}) Next() {{$arrayType}} {
 	pos := 0
 	cvals := c.cache.values
-	tvals := c.tsm.values
+	tvals := c.sst.values
 
 	c.res.Timestamps = c.res.Timestamps[:cap(c.res.Timestamps)]
 	c.res.Values = c.res.Values[:cap(c.res.Values)]
 
-	for pos < len(c.res.Timestamps) && c.tsm.pos >= 0 && c.cache.pos >= 0 {
+	for pos < len(c.res.Timestamps) && c.sst.pos >= 0 && c.cache.pos >= 0 {
 		ckey := cvals[c.cache.pos].UnixNano()
-		tkey := tvals.Timestamps[c.tsm.pos]
+		tkey := tvals.Timestamps[c.sst.pos]
 		if ckey == tkey {
 			c.res.Timestamps[pos] = ckey
 			c.res.Values[pos] = cvals[c.cache.pos].(types.{{.Name}}Value).RawValue()
 			c.cache.pos--
-			c.tsm.pos--
+			c.sst.pos--
 		} else if ckey > tkey {
 			c.res.Timestamps[pos] = ckey
 			c.res.Values[pos] = cvals[c.cache.pos].(types.{{.Name}}Value).RawValue()
 			c.cache.pos--
 		} else {
 			c.res.Timestamps[pos] = tkey
-			c.res.Values[pos] = tvals.Values[c.tsm.pos]
-			c.tsm.pos--
+			c.res.Values[pos] = tvals.Values[c.sst.pos]
+			c.sst.pos--
 		}
 
 		pos++
 
-		if c.tsm.pos < 0 {
-			tvals = c.nextTSM()
+		if c.sst.pos < 0 {
+			tvals = c.nextSST()
 		}
 	}
 
 	if pos < len(c.res.Timestamps) {
 		// cache was exhausted
-		if c.tsm.pos >= 0 {
-			for pos < len(c.res.Timestamps) && c.tsm.pos >= 0 {
-				c.res.Timestamps[pos] = tvals.Timestamps[c.tsm.pos]
-				c.res.Values[pos] = tvals.Values[c.tsm.pos]
+		if c.sst.pos >= 0 {
+			for pos < len(c.res.Timestamps) && c.sst.pos >= 0 {
+				c.res.Timestamps[pos] = tvals.Timestamps[c.sst.pos]
+				c.res.Values[pos] = tvals.Values[c.sst.pos]
 				pos++
-				c.tsm.pos--
-				if c.tsm.pos < 0 {
-					tvals = c.nextTSM()
+				c.sst.pos--
+				if c.sst.pos < 0 {
+					tvals = c.nextSST()
 				}
 			}
 		}
 
 		if c.cache.pos >= 0 {
-			// TSM was exhausted
+			// SST was exhausted
 			for pos < len(c.res.Timestamps) && c.cache.pos >= 0 {
 				c.res.Timestamps[pos] = cvals[c.cache.pos].UnixNano()
 				c.res.Values[pos] = cvals[c.cache.pos].(types.{{.Name}}Value).RawValue()
@@ -284,11 +284,11 @@ func (c *{{$type}}) Next() {{$arrayType}} {
 	return c.res
 }
 
-func (c *{{$type}}) nextTSM() {{$arrayType}} {
-	c.tsm.keyCursor.Next()
-	c.tsm.values, _ = c.tsm.keyCursor.Read{{.Name}}ArrayBlock(c.tsm.buf)
-	c.tsm.pos = len(c.tsm.values.Timestamps) - 1
-	return c.tsm.values
+func (c *{{$type}}) nextSST() {{$arrayType}} {
+	c.sst.keyCursor.Next()
+	c.sst.values, _ = c.sst.keyCursor.Read{{.Name}}ArrayBlock(c.sst.buf)
+	c.sst.pos = len(c.sst.values.Timestamps) - 1
+	return c.sst.values
 }
 
 {{end}}

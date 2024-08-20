@@ -47,16 +47,20 @@ type VFileManager struct {
 	// A refcount of iterators -- when this hits zero, we can delete the filesToBeDeleted.
 	numActiveIterators int32
 
-	writableLogOffset  uint32 // read by read, written by write. Must access via atomics.
-	numEntriesWritten  uint32
-	valueValueFileSize uint32
-	valueLogMaxEntries uint32
-	valueThreshold     uint32
-	garbageCh          chan struct{}
-	discard            *discard
-	logger             *zap.Logger
-	separate           bool
-	fileWrite          sync.RWMutex
+	writableLogOffset         uint32 // read by read, written by write. Must access via atomics.
+	numEntriesWritten         uint32
+	valueFileMaxSize          uint32
+	valueFileMaxEntries       uint32
+	valueFileGCThresholdRadio float64
+	valueFileGCMaxFiles       int
+
+	garbageCh chan struct{}
+	discard   *discard
+	lifeCycle int
+
+	logger *zap.Logger
+
+	fileWrite sync.RWMutex
 }
 
 func NewVFileManager(option config.Option, lifeCycle int) (*VFileManager, error) {
@@ -65,10 +69,12 @@ func NewVFileManager(option config.Option, lifeCycle int) (*VFileManager, error)
 		return nil, err
 	}
 	v := &VFileManager{
-		dirPath:            valueFileDir,
-		valueValueFileSize: uint32(option.ValueFileMaxSize),
-		valueLogMaxEntries: uint32(option.ValueFileMaxEntries),
-		logger:             option.Logger,
+		dirPath:             valueFileDir,
+		valueFileMaxSize:    uint32(option.ValueFileMaxSize),
+		valueFileMaxEntries: uint32(option.ValueFileMaxEntries),
+		logger:              option.Logger,
+		garbageCh:           make(chan struct{}, 1),
+		lifeCycle:           lifeCycle,
 	}
 
 	if err := v.loadFiles(); err != nil {
@@ -83,7 +89,7 @@ func NewVFileManager(option config.Option, lifeCycle int) (*VFileManager, error)
 
 	// first open
 	if len(v.filesMap) == 0 {
-		_, err := v.createValueValueFile()
+		_, err := v.createValueFile()
 		if err != nil {
 			return nil, errs.Errorf(err, "Create a new log file failed while open value log")
 		}
@@ -100,7 +106,7 @@ func NewVFileManager(option config.Option, lifeCycle int) (*VFileManager, error)
 			return nil, fmt.Errorf("failed to open fmap")
 		}
 
-		if err := vf.Open(valueValueFilePath(v.dirPath, fid), os.O_RDWR,
+		if err := vf.Open(valueFilePath(v.dirPath, fid), os.O_RDWR,
 			2*option.ValueFileMaxSize); err != nil {
 			return nil, errs.Errorf(err, "Open existing file: %s", vf.path)
 		}
@@ -110,7 +116,6 @@ func NewVFileManager(option config.Option, lifeCycle int) (*VFileManager, error)
 			if err := vf.Delete(); err != nil {
 				return nil, errs.Errorf(err, "While deleting a empty log file: %s", vf.path)
 			}
-
 			delete(v.filesMap, fid)
 		}
 
@@ -123,18 +128,18 @@ func NewVFileManager(option config.Option, lifeCycle int) (*VFileManager, error)
 
 	offset := last.size
 
-	// the last value log file is not empty, truncate it and create a new one.
+	// the last value file is not empty, truncate it and create a new one.
 	if offset > 0 {
 		if err := last.Truncate(int64(offset)); err != nil {
-			return nil, errs.Errorf(err, "While truncating the last value log file: %s", last.path)
+			return nil, errs.Errorf(err, "While truncating the last value file: %s", last.path)
 		}
 
-		if _, err := v.createValueValueFile(); err != nil {
-			return nil, errs.Errorf(err, "While creating a new last value log file")
+		if _, err := v.createValueFile(); err != nil {
+			return nil, errs.Errorf(err, "While creating a new last value file")
 		}
 	}
 
-	// the last value log file is empty, reuse it.
+	// the last value file is empty, reuse it.
 	return v, nil
 }
 
@@ -186,6 +191,54 @@ func (v *VFileManager) Read(vp *ValuePtr) ([]byte, error) {
 	return vf.readWithValPtr(vp)
 }
 
+func (v *VFileManager) MarkAsDelete(key []byte, vp *ValuePtr) error {
+	vf, err := v.getValueFile(vp)
+	if err != nil {
+		return err
+	}
+	defer vf.lock.RUnlock()
+	return vf.MarkAsDelete(key, vp.MinTime, vp.MaxTime, false)
+}
+
+func (v *VFileManager) GetGarbageFiles() []*ValueFile {
+	files := v.getGarbageFiles()
+	var gf []*ValueFile
+	v.filesLock.RLock()
+	defer v.filesLock.RUnlock()
+	for _, f := range files {
+		maxFid := v.maxFid
+		if f.fid >= maxFid {
+			v.logger.Error("The value log id equal or greater than maxFid.",
+				zap.Int("fid", int(f.fid)), zap.Int("maxFid", int(maxFid)))
+			continue
+		}
+		canGc := true
+		for _, fid := range v.filesToBeDeleted {
+			if f.fid == fid {
+				canGc = false
+				break
+			}
+		}
+		if canGc {
+			gf = append(gf, f)
+		}
+	}
+	return gf
+}
+
+func (v *VFileManager) DeleteValueFile(vf *ValueFile) {
+	v.filesLock.Lock()
+	defer v.filesLock.Lock()
+
+	err := v.deleteValueFile(vf)
+	if err != nil {
+		v.logger.Warn("failed to delete value file, try later", zap.Int("fid", int(vf.fid)))
+		v.filesToBeDeleted = append(v.filesToBeDeleted, vf.fid)
+	} else {
+		delete(v.filesMap, vf.fid)
+	}
+}
+
 func (v *VFileManager) Close() error {
 	if v == nil {
 		return nil
@@ -207,6 +260,10 @@ func (v *VFileManager) Close() error {
 
 	if terr := v.discard.Close(); err == nil && terr != nil {
 		err = terr
+	}
+
+	for _, fid := range v.filesToBeDeleted {
+		v.DeleteValueFile(v.filesMap[fid])
 	}
 
 	return err
@@ -233,16 +290,17 @@ func (v *VFileManager) writeOffset() uint32 {
 	return atomic.LoadUint32(&v.writableLogOffset)
 }
 
-func (v *VFileManager) createValueValueFile() (*ValueFile, error) {
+func (v *VFileManager) createValueFile() (*ValueFile, error) {
 	fid := v.maxFid + 1
-	fpath := valueValueFilePath(v.dirPath, fid)
+	fpath := valueFilePath(v.dirPath, fid)
 	vf := &ValueFile{
-		fid:  fid,
-		path: fpath,
-		pos:  0,
+		fid:       fid,
+		path:      fpath,
+		lifeCycle: v.lifeCycle,
+		pos:       0,
 	}
 
-	err := vf.Open(fpath, os.O_RDWR|os.O_CREATE|os.O_EXCL, 2*int(v.valueValueFileSize))
+	err := vf.Open(fpath, os.O_RDWR|os.O_CREATE|os.O_EXCL, 2*int(v.valueFileMaxSize))
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +315,7 @@ func (v *VFileManager) createValueValueFile() (*ValueFile, error) {
 	return vf, nil
 }
 
-func (v *VFileManager) deleteValueValueFile(vf *ValueFile) error {
+func (v *VFileManager) deleteValueFile(vf *ValueFile) error {
 	if vf == nil {
 		return nil
 	}
@@ -273,7 +331,7 @@ func (v *VFileManager) loadFiles() error {
 
 	files, err := os.ReadDir(v.dirPath)
 	if err != nil {
-		return errs.Errorf(err, "Unable to open value log dir. Path: %s", v.dirPath)
+		return errs.Errorf(err, "Unable to open value file dir. Path: %s", v.dirPath)
 	}
 
 	// some file may duplicated, so we need a Set to found these.
@@ -286,7 +344,7 @@ func (v *VFileManager) loadFiles() error {
 
 		fid, err := getFileIdFromName(fname)
 		if err != nil {
-			return errs.Errorf(err, "Unable to parse value log file id. File: %s", fname)
+			return errs.Errorf(err, "Unable to parse value file id. File: %s", fname)
 		}
 
 		if _, ok := exist[fid]; ok {
@@ -333,16 +391,16 @@ func (v *VFileManager) validateWriteSize(dataSize uint64) error {
 	offset := uint64(v.writeOffset())
 	estimatedVlogOffset := dataSize + offset
 
-	if estimatedVlogOffset > uint64(v.valueValueFileSize) {
+	if estimatedVlogOffset > uint64(v.valueFileMaxSize) {
 		return fmt.Errorf("batch size offset %d is bigger than maximum offset %d",
-			estimatedVlogOffset, v.valueValueFileSize)
+			estimatedVlogOffset, v.valueFileMaxSize)
 	}
 
 	return nil
 }
 
 func (v *VFileManager) flush(vf *ValueFile) (*ValueFile, error) {
-	if v.writeOffset() <= v.valueValueFileSize && v.numEntriesWritten <= v.valueLogMaxEntries {
+	if v.writeOffset() <= v.valueFileMaxSize && v.numEntriesWritten <= v.valueFileMaxEntries {
 		return vf, nil
 	}
 
@@ -350,7 +408,7 @@ func (v *VFileManager) flush(vf *ValueFile) (*ValueFile, error) {
 		return nil, err
 	}
 
-	newvf, err := v.createValueValueFile()
+	newvf, err := v.createValueFile()
 	if err != nil {
 		return nil, err
 	}
@@ -412,7 +470,7 @@ func (v *VFileManager) decrIteratorCount() error {
 	v.filesLock.Unlock()
 
 	for _, vf := range vfs {
-		if err := v.deleteValueValueFile(vf); err != nil {
+		if err := v.deleteValueFile(vf); err != nil {
 			return err
 		}
 	}
@@ -426,7 +484,7 @@ func (v *VFileManager) dropAll() (int, error) {
 		v.filesLock.Lock()
 		defer v.filesLock.Unlock()
 		for _, vf := range v.filesMap {
-			if err := v.deleteValueValueFile(vf); err != nil {
+			if err := v.deleteValueFile(vf); err != nil {
 				return err
 			}
 			count++
@@ -440,14 +498,14 @@ func (v *VFileManager) dropAll() (int, error) {
 		return count, err
 	}
 
-	if _, err := v.createValueValueFile(); err != nil {
+	if _, err := v.createValueFile(); err != nil {
 		return count, err
 	}
 
 	return count, nil
 }
 
-func valueValueFilePath(dir string, fid uint32) string {
+func valueFilePath(dir string, fid uint32) string {
 	return filepath.Join(dir, fmt.Sprintf("%06d%s", fid, ValueFileExt))
 }
 

@@ -19,16 +19,20 @@
 package store
 
 import (
+	"bytes"
 	"encoding/binary"
-	"equinox/internel"
 	"equinox/storage/errs"
+	"equinox/storage/types"
 	"fmt"
 	"github.com/cespare/xxhash/v2"
 	"hash/crc32"
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 )
+
+const DefaultValidationCacheSize = 1024 * 1024
 
 type ValueFile struct {
 	fid  uint32
@@ -38,11 +42,16 @@ type ValueFile struct {
 	path string
 	lock sync.RWMutex
 
-	*internel.MMapFile
+	tombstoner *Tombstoner
+	cache      *dataValidationCache
+
+	lifeCycle int
+
+	*MMapFile
 }
 
 func (f *ValueFile) Open(path string, flags int, size int) error {
-	mmf, err := internel.OpenMmapFile(path, flags, size)
+	mmf, err := OpenMmapFile(path, flags, size)
 
 	if err != nil {
 		return errs.Errorf(err, "while opening file: %s", path)
@@ -54,6 +63,9 @@ func (f *ValueFile) Open(path string, flags int, size int) error {
 		f.size = 0
 		f.clearEntryHeader()
 	}
+
+	f.tombstoner = NewTombstoner(path, nil)
+	f.cache = newDataValidationCache(DefaultValidationCacheSize)
 
 	return nil
 }
@@ -109,6 +121,41 @@ func (f *ValueFile) WriteBlock(key []byte, minTime, maxTime int64, block []byte)
 	atomic.AddUint32(&f.size, uint32(n))
 
 	return newPos, nil
+}
+
+func (f *ValueFile) MarkAsDelete(key []byte, minTime, maxTime int64, sync bool) error {
+	f.cache.AddMulti(string(key), []TimeRange{{minTime, maxTime}})
+	if sync {
+		return f.tombstoner.writeTombstone([]Tombstone{{Max: maxTime, Min: minTime, Key: key}})
+	} else {
+		go f.tombstoner.writeTombstone([]Tombstone{{Max: maxTime, Min: minTime, Key: key}})
+		return nil
+	}
+}
+
+func (f *ValueFile) IsValidateValue(key []byte, minTime, maxTime int64) bool {
+	// TODO optimize this part
+	l := types.LifeCycleToUnixNano(f.lifeCycle)
+	t := time.Now()
+	if l != -1 && maxTime < t.UnixNano()-l {
+		return false
+	}
+	deletedTimes := f.cache.Get(string(key))
+	if deletedTimes != nil {
+		return IsOverlapAny(TimeRange{minTime, maxTime}, deletedTimes)
+	}
+	validated := true
+	err := f.tombstoner.Walk(func(t Tombstone) error {
+		if bytes.Equal(key, t.Key) && t.Min <= minTime && t.Max >= maxTime {
+			validated = true
+			return fmt.Errorf("find")
+		}
+		return nil
+	})
+	if err != nil {
+		return false
+	}
+	return validated
 }
 
 func (f *ValueFile) readWithValPtr(p *ValuePtr) (buf []byte, err error) {

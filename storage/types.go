@@ -50,9 +50,9 @@ func (s *compactionStrategy) Apply() {
 func (s *compactionStrategy) compactGroup() {
 	group := s.group
 
-	s.logger.Info("Beginning compaction", zap.Int("tsm1_files_n", len(group)))
+	s.logger.Info("Beginning compaction", zap.Int("sst1_files_n", len(group)))
 	for i, f := range group {
-		s.logger.Info("Compacting file", zap.Int("tsm1_index", i), zap.String("tsm1_file", f))
+		s.logger.Info("Compacting file", zap.Int("sst1_index", i), zap.String("sst1_file", f))
 	}
 
 	var (
@@ -76,17 +76,17 @@ func (s *compactionStrategy) compactGroup() {
 			return
 		}
 
-		s.logger.Warn("Error compacting TSM files", zap.Error(err))
+		s.logger.Warn("Error compacting SST files", zap.Error(err))
 
-		// We hit a bad TSM file - rename so the next compaction can proceed.
+		// We hit a bad SST file - rename so the next compaction can proceed.
 		var errBlockRead compactor.ErrBlockRead
 		if errors.As(err, &errBlockRead) {
 			path := err.(compactor.ErrBlockRead).File
-			s.logger.Info("Renaming a corrupt TSM file due to compaction error", zap.Error(err))
+			s.logger.Info("Renaming a corrupt SST file due to compaction error", zap.Error(err))
 			if err := s.fileStore.ReplaceWithCallback([]string{path}, nil, nil); err != nil {
-				s.logger.Info("Error removing bad TSM file", zap.Error(err))
-			} else if e := os.Rename(path, path+"."+store.BadTSMFileExtension); e != nil {
-				s.logger.Info("Error renaming corrupt TSM file", zap.Error((err)))
+				s.logger.Info("Error removing bad SST file", zap.Error(err))
+			} else if e := os.Rename(path, path+"."+store.BadSSTFileExtension); e != nil {
+				s.logger.Info("Error renaming corrupt SST file", zap.Error((err)))
 			}
 		}
 		time.Sleep(time.Second)
@@ -94,7 +94,7 @@ func (s *compactionStrategy) compactGroup() {
 	}
 
 	if err := s.fileStore.ReplaceWithCallback(group, files, nil); err != nil {
-		s.logger.Info("Error replacing new TSM files", zap.Error(err))
+		s.logger.Info("Error replacing new SST files", zap.Error(err))
 		time.Sleep(time.Second)
 
 		// Remove the new snapshot files. We will try again.
@@ -107,10 +107,10 @@ func (s *compactionStrategy) compactGroup() {
 	}
 
 	for i, f := range files {
-		s.logger.Info("Compacted file", zap.Int("tsm1_index", i), zap.String("tsm1_file", f))
+		s.logger.Info("Compacted file", zap.Int("sst1_index", i), zap.String("sst1_file", f))
 	}
 	s.logger.Info("Finished compacting files",
-		zap.Int("tsm1_files_n", len(files)))
+		zap.Int("sst1_files_n", len(files)))
 }
 
 type compactionCounter struct {

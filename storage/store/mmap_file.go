@@ -1,0 +1,218 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package store
+
+import (
+	"golang.org/x/sys/unix"
+	"io"
+	"os"
+	"path/filepath"
+)
+
+const RW_ = 0666
+
+type MMapFile struct {
+	Data    []byte
+	Fd      *os.File
+	NewFile bool // if a file is created when it open, this is true
+}
+
+func OpenMmapFile(filename string, flag int, max int) (*MMapFile, error) {
+	fd, err := os.OpenFile(filename, flag, RW_)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return OpenMmapFileWithFD(fd, flag, max)
+}
+
+func OpenMmapFileWithFD(fd *os.File, flag int, max int) (*MMapFile, error) {
+	stat, err := fd.Stat()
+
+	if err != nil {
+		return nil, err
+	}
+
+	size := stat.Size()
+	newFile := false
+	if max > 0 && size == 0 {
+		// If file is empty, truncate it to sz.
+		if err := fd.Truncate(int64(max)); err != nil {
+			return nil, err
+		}
+
+		size = int64(max)
+		newFile = true
+	}
+
+	prod := unix.PROT_READ | unix.PROT_WRITE
+	if flag == os.O_RDONLY {
+		prod = unix.PROT_READ
+	}
+
+	buf, err := unix.Mmap(int(fd.Fd()), 0, int(size), prod, unix.MAP_SHARED)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if size == 0 {
+		dir, _ := filepath.Split(fd.Name())
+
+		go dsync(dir)
+	}
+
+	return &MMapFile{
+		Data:    buf,
+		Fd:      fd,
+		NewFile: newFile,
+	}, nil
+}
+
+type reader struct {
+	data   []byte
+	offset int
+}
+
+func (r *reader) Read(buf []byte) (int, error) {
+	if r.offset > len(r.data) {
+		return 0, io.EOF
+	}
+
+	n := copy(buf, r.data[r.offset:])
+	r.offset += n
+	if n < len(buf) {
+		return n, io.EOF
+	}
+
+	return n, nil
+}
+
+func (m *MMapFile) NewReader(offset int) io.Reader {
+	return &reader{data: m.Data, offset: offset}
+}
+
+func (m *MMapFile) Truncate(size int64) error {
+	if m.Fd == nil {
+		return nil
+	}
+
+	if err := m.Sync(); err != nil {
+		return err
+	}
+
+	if err := unix.Munmap(m.Data); err != nil {
+		return err
+	}
+
+	if err := m.Fd.Truncate(size); err != nil {
+		return err
+	}
+
+	var err error
+	m.Data, err = unix.Mmap(int(m.Fd.Fd()), 0, int(size), unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
+	return err
+}
+
+func (m *MMapFile) Delete() error {
+	if m.Fd == nil {
+		return nil
+	}
+
+	if err := unix.Munmap(m.Data); err != nil {
+		return err
+	}
+
+	m.Data = nil
+
+	if err := m.Fd.Truncate(0); err != nil {
+		return err
+	}
+
+	if err := m.Fd.Close(); err != nil {
+		return err
+	}
+
+	return os.Remove(m.Fd.Name())
+}
+
+func (m *MMapFile) Close() error {
+	if m.Fd == nil {
+		return nil
+	}
+
+	if err := m.Sync(); err != nil {
+		return err
+	}
+
+	if err := unix.Munmap(m.Data); err != nil {
+		return err
+	}
+
+	return m.Fd.Close()
+}
+
+func (m *MMapFile) CloseWithTruncate(size int64) error {
+	if m.Fd == nil {
+		return nil
+	}
+
+	if err := m.Sync(); err != nil {
+		return err
+	}
+
+	if err := unix.Munmap(m.Data); err != nil {
+		return err
+	}
+
+	if size >= 0 {
+		if err := m.Fd.Truncate(size); err != nil {
+			return err
+		}
+	}
+
+	return m.Fd.Close()
+}
+
+func (m *MMapFile) Sync() error {
+	if m.Fd == nil {
+		return nil
+	}
+
+	return unix.Msync(m.Data, unix.MS_SYNC)
+}
+
+func dsync(dirName string) error {
+	d, err := os.Open(dirName)
+
+	if err != nil {
+		return err
+	}
+
+	if err := d.Sync(); err != nil {
+		return err
+	}
+
+	if err := d.Close(); err != nil {
+		return err
+	}
+
+	return nil
+}

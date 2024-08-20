@@ -10,9 +10,9 @@ import (
 	"sync"
 )
 
-// TSMIndex represent the index section of a TSM file.  The index records all
+// SSTIndex represent the index section of a SST file.  The index records all
 // blocks, their locations, sizes, min and max times.
-type TSMIndex interface {
+type SSTIndex interface {
 	// Delete removes the given keys from the index.
 	Delete(keys [][]byte)
 

@@ -20,6 +20,7 @@ package types
 
 import (
 	"strconv"
+	"time"
 	"unsafe"
 )
 
@@ -70,4 +71,21 @@ func parseUintBytes(b []byte, base int, bitSize int) (i uint64, err error) {
 
 func unsafeBytesToString(in []byte) string {
 	return *(*string)(unsafe.Pointer(&in))
+}
+
+func LifeCycleToUnixNano(l int) int64 {
+	switch LifeCycle(l) {
+	case LifeCycleSevenDays:
+		return (7 * 24 * time.Hour).Nanoseconds()
+	case LifeCycleFourteenDays:
+		return (14 * 24 * time.Hour).Nanoseconds()
+	case LifeCycleOneMouth:
+		return (30 * 24 * time.Hour).Nanoseconds()
+	case LifeCycleSixMouth:
+		return (6 * 30 * 24 * time.Hour).Nanoseconds()
+	case LifeCycleOneYear:
+		return (12 * 30 * 24 * time.Hour).Nanoseconds()
+	default:
+		return -1
+	}
 }

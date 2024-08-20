@@ -1,16 +1,16 @@
 package compactor
 
-// Compactions are the process of creating read-optimized TSM files.
+// Compactions are the process of creating read-optimized SST files.
 // The files are created by converting write-optimized WAL entries
-// to read-optimized TSM format.  They can also be created from existing
-// TSM files when there are tombstone records that need to be removed, points
+// to read-optimized SST format.  They can also be created from existing
+// SST files when there are tombstone records that need to be removed, points
 // that were overwritten by later writes and need to updated, or multiple
-// smaller TSM files need to be merged to reduce File counts and improve
+// smaller SST files need to be merged to reduce File counts and improve
 // compression ratios.
 //
 // The compaction process is stream-oriented using multiple readers and
 // iterators.  The resulting stream is written sorted and chunked to allow for
-// one-pass writing of a new TSM File.
+// one-pass writing of a new SST File.
 
 import (
 	"bytes"
@@ -31,25 +31,25 @@ import (
 )
 
 const DefaultSegmentSize = 10 * 1024 * 1024
-const maxTSMFileSize = uint32(2048 * 1024 * 1024) // 2GB
+const maxSSTFileSize = uint32(2048 * 1024 * 1024) // 2GB
 const logEvery = 2 * DefaultSegmentSize
 const DefaultMaxPointsPerBlock = 1000
 
 const (
-	// DefaultMaxSavedErrors is the number of errors that are stored by a TSMBatchKeyReader before
+	// DefaultMaxSavedErrors is the number of errors that are stored by a SSTBatchKeyReader before
 	// subsequent errors are discarded
 	DefaultMaxSavedErrors = 100
 )
 
-// Compactor merges multiple TSM files into new files or
-// writes a Cache into 1 or more TSM files.
+// Compactor merges multiple SST files into new files or
+// writes a Cache into 1 or more SST files.
 type Compactor struct {
 	Dir  string
 	Size int
 
 	FileStore interface {
 		NextGeneration() int
-		TSMReader(path string) *store.TSMReader
+		SSTReader(path string) *store.SSTReader
 	}
 
 	// RateLimit is the limit for disk writes for all concurrent compactions.
@@ -169,7 +169,7 @@ func (c *Compactor) EnableCompactions() {
 	c.mu.Unlock()
 }
 
-// WriteSnapshot writes a Cache snapshot to one or more new TSM files.
+// WriteSnapshot writes a Cache snapshot to one or more new SST files.
 func (c *Compactor) WriteSnapshot(cache *memory.Cache, logger *zap.Logger) ([]string, error) {
 	c.mu.RLock()
 	enabled := c.snapshotsEnabled
@@ -244,8 +244,8 @@ func (c *Compactor) WriteSnapshot(cache *memory.Cache, logger *zap.Logger) ([]st
 	return files, err
 }
 
-// compact writes multiple smaller TSM files into 1 or more larger files.
-func (c *Compactor) compact(fast bool, tsmFiles []string, logger *zap.Logger) ([]string, error) {
+// compact writes multiple smaller SST files into 1 or more larger files.
+func (c *Compactor) compact(fast bool, sstFiles []string, logger *zap.Logger) ([]string, error) {
 	size := c.Size
 	if size <= 0 {
 		size = DefaultMaxPointsPerBlock
@@ -259,7 +259,7 @@ func (c *Compactor) compact(fast bool, tsmFiles []string, logger *zap.Logger) ([
 	// set.  We need to find that max generation as well as the max sequence
 	// number to ensure we write to the next unique location.
 	var maxGeneration, maxSequence int
-	for _, f := range tsmFiles {
+	for _, f := range sstFiles {
 		gen, seq, err := c.parseFileName(f)
 		if err != nil {
 			return nil, err
@@ -275,18 +275,18 @@ func (c *Compactor) compact(fast bool, tsmFiles []string, logger *zap.Logger) ([
 		}
 	}
 
-	// For each TSM File, create a TSM reader
-	var trs []*store.TSMReader
-	for _, file := range tsmFiles {
+	// For each SST File, create a SST reader
+	var trs []*store.SSTReader
+	for _, file := range sstFiles {
 		select {
 		case <-intC:
 			return nil, ErrCompactionAborted{}
 		default:
 		}
 
-		tr := c.FileStore.TSMReader(file)
+		tr := c.FileStore.SSTReader(file)
 		if tr == nil {
-			// This would be a bug if this occurred as tsmFiles passed in should only be
+			// This would be a bug if this occurred as sstFiles passed in should only be
 			// assigned to one compaction at any one time.  A nil tr would mean the File
 			// doesn't exist.
 			return nil, ErrCompactionAborted{fmt.Errorf("bad plan: %s", file)}
@@ -300,16 +300,16 @@ func (c *Compactor) compact(fast bool, tsmFiles []string, logger *zap.Logger) ([
 		return nil, nil
 	}
 
-	tsm, err := NewTSMBatchKeyIterator(size, fast, DefaultMaxSavedErrors, intC, c.VM, tsmFiles, trs...)
+	sst, err := NewSSTBatchKeyIterator(size, fast, DefaultMaxSavedErrors, intC, c.VM, sstFiles, trs...)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.writeNewFiles(maxGeneration, maxSequence, tsmFiles, tsm, true, logger)
+	return c.writeNewFiles(maxGeneration, maxSequence, sstFiles, sst, true, logger)
 }
 
-// CompactFull writes multiple smaller TSM files into 1 or more larger files.
-func (c *Compactor) CompactFull(tsmFiles []string, logger *zap.Logger) ([]string, error) {
+// CompactFull writes multiple smaller SST files into 1 or more larger files.
+func (c *Compactor) CompactFull(sstFiles []string, logger *zap.Logger) ([]string, error) {
 	c.mu.RLock()
 	enabled := c.compactionsEnabled
 	c.mu.RUnlock()
@@ -318,12 +318,12 @@ func (c *Compactor) CompactFull(tsmFiles []string, logger *zap.Logger) ([]string
 		return nil, ErrCompactionsDisabled
 	}
 
-	if !c.add(tsmFiles) {
+	if !c.add(sstFiles) {
 		return nil, ErrCompactionInProgress{}
 	}
-	defer c.remove(tsmFiles)
+	defer c.remove(sstFiles)
 
-	files, err := c.compact(false, tsmFiles, logger)
+	files, err := c.compact(false, sstFiles, logger)
 
 	// See if we were disabled while writing a snapshot
 	c.mu.RLock()
@@ -340,8 +340,8 @@ func (c *Compactor) CompactFull(tsmFiles []string, logger *zap.Logger) ([]string
 	return files, err
 }
 
-// CompactFast writes multiple smaller TSM files into 1 or more larger files.
-func (c *Compactor) CompactFast(tsmFiles []string, logger *zap.Logger) ([]string, error) {
+// CompactFast writes multiple smaller SST files into 1 or more larger files.
+func (c *Compactor) CompactFast(sstFiles []string, logger *zap.Logger) ([]string, error) {
 	c.mu.RLock()
 	enabled := c.compactionsEnabled
 	c.mu.RUnlock()
@@ -350,12 +350,12 @@ func (c *Compactor) CompactFast(tsmFiles []string, logger *zap.Logger) ([]string
 		return nil, ErrCompactionsDisabled
 	}
 
-	if !c.add(tsmFiles) {
+	if !c.add(sstFiles) {
 		return nil, ErrCompactionInProgress{}
 	}
-	defer c.remove(tsmFiles)
+	defer c.remove(sstFiles)
 
-	files, err := c.compact(true, tsmFiles, logger)
+	files, err := c.compact(true, sstFiles, logger)
 
 	// See if we were disabled while writing a snapshot
 	c.mu.RLock()
@@ -384,17 +384,17 @@ func (c *Compactor) removeTmpFiles(files []string) error {
 	return nil
 }
 
-// writeNewFiles writes from the iterator into new TSM files, rotating
-// to a new File once it has reached the max TSM File size.
+// writeNewFiles writes from the iterator into new SST files, rotating
+// to a new File once it has reached the max SST File size.
 func (c *Compactor) writeNewFiles(generation, sequence int, src []string, iter KeyIterator, throttle bool, logger *zap.Logger) ([]string, error) {
-	// These are the new TSM files written
+	// These are the new SST files written
 	var files []string
 
 	for {
 		sequence++
 
-		// New TSM files are written to a temp File and renamed when fully completed.
-		fileName := filepath.Join(c.Dir, c.formatFileName(generation, sequence)+"."+store.TSMFileExtension+"."+store.TmpTSMFileExtension)
+		// New SST files are written to a temp File and renamed when fully completed.
+		fileName := filepath.Join(c.Dir, c.formatFileName(generation, sequence)+"."+store.SSTFileExtension+"."+store.TmpSSTFileExtension)
 		logger.Debug("Compacting files", zap.Int("file_count", len(src)), zap.String("output_file", fileName))
 
 		// Write as much as possible to this File
@@ -445,14 +445,14 @@ func (c *Compactor) write(path string, iter KeyIterator, throttle bool, logger *
 	}
 
 	// syncingWriter ensures that whatever we wrap the above File descriptor in
-	// it will always be able to be synced by the tsm writer, since it does
+	// it will always be able to be synced by the sst writer, since it does
 	// type assertions to attempt to sync.
 	type syncingWriter interface {
 		io.Writer
 		Sync() error
 	}
 
-	// Create the write for the new TSM File.
+	// Create the write for the new SST File.
 	var (
 		w           store.SSTWriter
 		limitWriter syncingWriter = fd
@@ -462,15 +462,15 @@ func (c *Compactor) write(path string, iter KeyIterator, throttle bool, logger *
 		limitWriter = limiter.NewWriterWithRate(fd, c.RateLimit)
 	}
 
-	// Use a disk based TSM buffer if it looks like we might create a big index
+	// Use a disk based SST buffer if it looks like we might create a big index
 	// in memory.
 	if iter.EstimatedIndexSize() > 64*1024*1024 {
-		w, err = store.NewTSMWriterWithDiskBuffer(limitWriter)
+		w, err = store.NewSSTWriterWithDiskBuffer(limitWriter)
 		if err != nil {
 			return err
 		}
 	} else {
-		w, err = store.NewTSMWriter(limitWriter)
+		w, err = store.NewSSTWriter(limitWriter)
 		if err != nil {
 			return err
 		}
@@ -528,7 +528,7 @@ func (c *Compactor) write(path string, iter KeyIterator, throttle bool, logger *
 
 		// If we have a max File size configured and we're over it, close out the File
 		// and return the error.
-		if w.Size() > maxTSMFileSize {
+		if w.Size() > maxSSTFileSize {
 			if err := w.WriteIndex(); err != nil {
 				return err
 			}
@@ -579,9 +579,9 @@ func (c *Compactor) remove(files []string) {
 	}
 }
 
-type TSMErrors []error
+type SSTErrors []error
 
-func (t TSMErrors) Error() string {
+func (t SSTErrors) Error() string {
 	e := []string{}
 	for _, v := range t {
 		e = append(e, v.Error())

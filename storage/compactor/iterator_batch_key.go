@@ -27,12 +27,12 @@ import (
 	"math"
 )
 
-// tsmBatchKeyIterator implements the KeyIterator for set of store.TSMReaders.  Iteration produces
+// sstBatchKeyIterator implements the KeyIterator for set of store.SSTReaders.  Iteration produces
 // keys in sorted order and the values between the keys sorted and deduped.  If any of
 // the readers have associated tombstone entries, they are returned as part of iteration.
-type tsmBatchKeyIterator struct {
+type sstBatchKeyIterator struct {
 	// readers is the set of readers it produce a sorted key run with
-	readers []*store.TSMReader
+	readers []*store.SSTReader
 
 	// values is the temporary buffers for each key that is returned by a reader
 	values map[string][]types.Value
@@ -42,7 +42,7 @@ type tsmBatchKeyIterator struct {
 	pos []int
 
 	// errs is any error we received while iterating values.
-	errs TSMErrors
+	errs SSTErrors
 
 	// indicates whether the iterator should choose a faster merging strategy over a more
 	// optimally compressed one.  If fast is true, multiple blocks will just be added as is
@@ -60,11 +60,11 @@ type tsmBatchKeyIterator struct {
 	key []byte
 	typ byte
 
-	// tsmFiles are the string names of the files for use in tracking errors, ordered the same
+	// sstFiles are the string names of the files for use in tracking errors, ordered the same
 	// as iterators and buf
-	tsmFiles []string
-	// currentTsm is the current TSM File being iterated over
-	currentTsm string
+	sstFiles []string
+	// currentSst is the current SST File being iterated over
+	currentSst string
 
 	iterators []*store.BlockIterator
 	blocks    blocks
@@ -91,7 +91,7 @@ type tsmBatchKeyIterator struct {
 	vr *store.VFileRegionManager
 }
 
-func (it *tsmBatchKeyIterator) AppendError(err error) bool {
+func (it *sstBatchKeyIterator) AppendError(err error) bool {
 	if it.maxErrors > len(it.errs) {
 		it.errs = append(it.errs, err)
 		// Was the error stored?
@@ -103,22 +103,22 @@ func (it *tsmBatchKeyIterator) AppendError(err error) bool {
 	}
 }
 
-// NewTSMBatchKeyIterator returns a new TSM key iterator from readers.
+// NewSSTBatchKeyIterator returns a new SST key iterator from readers.
 // size indicates the maximum number of values to encode in a single block.
-func NewTSMBatchKeyIterator(size int, fast bool, maxErrors int, interrupt chan struct{}, vfm *store.VFileRegionManager, tsmFiles []string, readers ...*store.TSMReader) (KeyIterator, error) {
+func NewSSTBatchKeyIterator(size int, fast bool, maxErrors int, interrupt chan struct{}, vfm *store.VFileRegionManager, sstFiles []string, readers ...*store.SSTReader) (KeyIterator, error) {
 	var iter []*store.BlockIterator
 	for _, r := range readers {
 		iter = append(iter, r.BlockIterator())
 	}
 
-	return &tsmBatchKeyIterator{
+	return &sstBatchKeyIterator{
 		readers:              readers,
 		values:               map[string][]types.Value{},
 		pos:                  make([]int, len(readers)),
 		size:                 size,
 		iterators:            iter,
 		fast:                 fast,
-		tsmFiles:             tsmFiles,
+		sstFiles:             sstFiles,
 		buf:                  make([]blocks, len(iter)),
 		mergedFloatValues:    &types.FloatArray{},
 		mergedIntegerValues:  &types.IntegerArray{},
@@ -131,7 +131,7 @@ func NewTSMBatchKeyIterator(size int, fast bool, maxErrors int, interrupt chan s
 	}, nil
 }
 
-func (it *tsmBatchKeyIterator) hasMergedValues() bool {
+func (it *sstBatchKeyIterator) hasMergedValues() bool {
 	return it.mergedFloatValues.Len() > 0 ||
 		it.mergedIntegerValues.Len() > 0 ||
 		it.mergedUnsignedValues.Len() > 0 ||
@@ -139,7 +139,7 @@ func (it *tsmBatchKeyIterator) hasMergedValues() bool {
 		it.mergedBooleanValues.Len() > 0
 }
 
-func (it *tsmBatchKeyIterator) EstimatedIndexSize() int {
+func (it *sstBatchKeyIterator) EstimatedIndexSize() int {
 	var size uint32
 	for _, r := range it.readers {
 		size += r.IndexSize()
@@ -148,7 +148,7 @@ func (it *tsmBatchKeyIterator) EstimatedIndexSize() int {
 }
 
 // Next returns true if there are any values remaining in the iterator.
-func (it *tsmBatchKeyIterator) Next() bool {
+func (it *sstBatchKeyIterator) Next() bool {
 RETRY:
 	// Any merged blocks pending?
 	if len(it.merged) > 0 {
@@ -174,18 +174,18 @@ RETRY:
 		}
 	}
 
-	// Read the next block from each TSM iterator
+	// Read the next block from each SST iterator
 	for i, v := range it.buf {
 		if len(v) != 0 {
 			continue
 		}
 
 		iter := it.iterators[i]
-		it.currentTsm = it.tsmFiles[i]
+		it.currentSst = it.sstFiles[i]
 		if iter.Next() {
 			key, minTime, maxTime, typ, _, b, err := iter.Read()
 			if err != nil {
-				it.AppendError(ErrBlockRead{it.currentTsm, err})
+				it.AppendError(ErrBlockRead{it.currentSst, err})
 			}
 
 			// This block may have ranges of time removed from it that would
@@ -218,7 +218,7 @@ RETRY:
 				iter.Next()
 				key, minTime, maxTime, typ, _, b, err := iter.Read()
 				if err != nil {
-					it.AppendError(ErrBlockRead{it.currentTsm, err})
+					it.AppendError(ErrBlockRead{it.currentSst, err})
 				}
 
 				tombstones := iter.R.TombstoneRange(key)
@@ -248,7 +248,7 @@ RETRY:
 		}
 
 		if iter.Err() != nil {
-			it.AppendError(ErrBlockRead{it.currentTsm, iter.Err()})
+			it.AppendError(ErrBlockRead{it.currentSst, iter.Err()})
 		}
 	}
 
@@ -297,7 +297,7 @@ RETRY:
 }
 
 // merge combines the next set of blocks into merged blocks.
-func (it *tsmBatchKeyIterator) merge() {
+func (it *sstBatchKeyIterator) merge() {
 	switch codec.GetBaseType(it.typ) {
 	case types.BlockFloat64:
 		it.mergeFloat()
@@ -310,19 +310,19 @@ func (it *tsmBatchKeyIterator) merge() {
 	case types.BlockString:
 		it.mergeString()
 	default:
-		it.AppendError(ErrBlockRead{it.currentTsm, fmt.Errorf("unknown block type: %v", it.typ)})
+		it.AppendError(ErrBlockRead{it.currentSst, fmt.Errorf("unknown block type: %v", it.typ)})
 	}
 }
 
-func (it *tsmBatchKeyIterator) handleEncodeError(err error, typ string) {
-	it.AppendError(ErrBlockRead{it.currentTsm, fmt.Errorf("encode error: unable to compress block type %s for key '%s': %v", typ, it.key, err)})
+func (it *sstBatchKeyIterator) handleEncodeError(err error, typ string) {
+	it.AppendError(ErrBlockRead{it.currentSst, fmt.Errorf("encode error: unable to compress block type %s for key '%s': %v", typ, it.key, err)})
 }
 
-func (it *tsmBatchKeyIterator) handleDecodeError(err error, typ string) {
-	it.AppendError(ErrBlockRead{it.currentTsm, fmt.Errorf("decode error: unable to decompress block type %s for key '%s': %v", typ, it.key, err)})
+func (it *sstBatchKeyIterator) handleDecodeError(err error, typ string) {
+	it.AppendError(ErrBlockRead{it.currentSst, fmt.Errorf("decode error: unable to decompress block type %s for key '%s': %v", typ, it.key, err)})
 }
 
-func (it *tsmBatchKeyIterator) Read() ([]byte, int64, int64, []byte, error) {
+func (it *sstBatchKeyIterator) Read() ([]byte, int64, int64, []byte, error) {
 	// See if compactions were disabled while we were running.
 	select {
 	case <-it.interrupt:
@@ -338,7 +338,7 @@ func (it *tsmBatchKeyIterator) Read() ([]byte, int64, int64, []byte, error) {
 	return block.key, block.minTime, block.maxTime, block.b, it.Err()
 }
 
-func (it *tsmBatchKeyIterator) Close() error {
+func (it *sstBatchKeyIterator) Close() error {
 	it.values = nil
 	it.pos = nil
 	it.iterators = nil
@@ -351,12 +351,12 @@ func (it *tsmBatchKeyIterator) Close() error {
 }
 
 // Err returns any errors encountered during iteration.
-func (it *tsmBatchKeyIterator) Err() error {
+func (it *sstBatchKeyIterator) Err() error {
 	if len(it.errs) == 0 {
 		return nil
 	}
 	// Copy the errors before appending the dropped error count
-	var errs TSMErrors
+	var errs SSTErrors
 	errs = make([]error, 0, len(it.errs)+1)
 	errs = append(errs, it.errs...)
 	errs = append(errs, fmt.Errorf("additional errors dropped: %d", it.overflowErrors))

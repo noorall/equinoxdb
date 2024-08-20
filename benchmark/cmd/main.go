@@ -20,9 +20,9 @@ package main
 
 import (
 	"context"
-	"equinox/pkg/models"
 	"equinox/storage"
 	"equinox/storage/config"
+	"equinox/storage/types"
 	"fmt"
 	"io/ioutil"
 	"strings"
@@ -46,14 +46,14 @@ func TestWritePoints(e *storage.Engine, wg *sync.WaitGroup) {
 		builder.WriteString(line)
 	}
 	data := builder.String()
-	fields := models.Fields{
+	fields := types.Fields{
 		"field1": data,
 		"field4": data,
 	}
 	start := time.Now()
 	for i := 0; i < 2621440/2/10; i++ {
-		p, _ := models.NewPoint("hh", fields, time.Now())
-		_ = e.WriteBatch([]models.Point{p})
+		p, _ := types.NewPoint("hh", fields, time.Now(), types.LifeCycleDefault)
+		_ = e.WriteBatch([]types.Point{p})
 	}
 	fmt.Printf("cost %v s", time.Since(start).Seconds())
 	_ = e.Close()
@@ -67,14 +67,14 @@ func TestWritePoints2(e *storage.Engine, wg *sync.WaitGroup) {
 		builder.WriteString(line)
 	}
 	data := builder.String()
-	fields := models.Fields{
+	fields := types.Fields{
 		"field1": data,
 		"field4": data,
 	}
 	start := time.Now()
 	for i := 0; i < 2621440/2/10/2; i++ {
-		p, _ := models.NewPoint("hh2", fields, time.Now())
-		_ = e.WriteBatch([]models.Point{p})
+		p, _ := types.NewPoint("hh2", fields, time.Now(), types.LifeCycleDefault)
+		_ = e.WriteBatch([]types.Point{p})
 	}
 	fmt.Printf("cost %v s", time.Since(start).Seconds())
 	_ = e.Close()

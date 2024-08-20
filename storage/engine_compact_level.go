@@ -238,11 +238,11 @@ func (e *Engine) compactFull(grp compactor.CompactionGroup, wg *sync.WaitGroup) 
 }
 
 // levelCompactionStrategy returns a compactionStrategy for the given level.
-// It returns nil if there are no TSM files to compact.
+// It returns nil if there are no SST files to compact.
 func (e *Engine) levelCompactionStrategy(group compactor.CompactionGroup, fast bool, level int) *compactionStrategy {
 	return &compactionStrategy{
 		group:     group,
-		logger:    e.logger.With(zap.Int("tsm1_level", level), zap.String("tsm1_strategy", "level")),
+		logger:    e.logger.With(zap.Int("sst1_level", level), zap.String("sst1_strategy", "level")),
 		fileStore: e.filestore,
 		compactor: e.compactor,
 		fast:      fast,
@@ -251,12 +251,12 @@ func (e *Engine) levelCompactionStrategy(group compactor.CompactionGroup, fast b
 	}
 }
 
-// fullCompactionStrategy returns a compactionStrategy for higher level generations of TSM files.
-// It returns nil if there are no TSM files to compact.
+// fullCompactionStrategy returns a compactionStrategy for higher level generations of SST files.
+// It returns nil if there are no SST files to compact.
 func (e *Engine) fullCompactionStrategy(group compactor.CompactionGroup, optimize bool) *compactionStrategy {
 	s := &compactionStrategy{
 		group:     group,
-		logger:    e.logger.With(zap.String("tsm1_strategy", "full"), zap.Bool("tsm1_optimize", optimize)),
+		logger:    e.logger.With(zap.String("sst1_strategy", "full"), zap.Bool("sst1_optimize", optimize)),
 		fileStore: e.filestore,
 		compactor: e.compactor,
 		fast:      optimize,

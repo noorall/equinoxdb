@@ -20,7 +20,6 @@ package store
 
 import (
 	"encoding/binary"
-	"equinox/internel"
 	"equinox/storage/errs"
 	"os"
 	"path/filepath"
@@ -38,13 +37,13 @@ type discard struct {
 	next int
 
 	sync.Mutex // because the difference reader and writer
-	*internel.MMapFile
+	*MMapFile
 }
 
 func newDiscard(dir string) (*discard, error) {
 	fName := filepath.Join(dir, discardFileName)
 
-	m, err := internel.OpenMmapFile(fName, os.O_CREATE|os.O_RDWR, initDiscardSize)
+	m, err := OpenMmapFile(fName, os.O_CREATE|os.O_RDWR, initDiscardSize)
 
 	if err != nil {
 		return nil, errs.Errorf(err, "while open discard file: %s\n", fName)

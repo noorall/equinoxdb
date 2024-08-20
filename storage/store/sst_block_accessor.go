@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	// ErrTSMClosed is returned when performing an operation against a closed TSM file.
-	ErrTSMClosed = fmt.Errorf("tsm file closed")
+	// ErrSSTClosed is returned when performing an operation against a closed SST file.
+	ErrSSTClosed = fmt.Errorf("sst file closed")
 )
 
 type blockAccessor interface {
@@ -198,7 +198,7 @@ func (m *mmapAccessor) readBlock(entry *IndexEntry, values []types.Value) ([]typ
 	defer m.mu.RUnlock()
 
 	if int64(len(m.b)) < entry.Offset+int64(entry.Size) {
-		return nil, ErrTSMClosed
+		return nil, ErrSSTClosed
 	}
 	//TODO: Validate checksum
 	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])
@@ -228,7 +228,7 @@ func (m *mmapAccessor) readBytes(entry *IndexEntry, b []byte) (uint32, []byte, e
 	m.mu.RLock()
 	if int64(len(m.b)) < entry.Offset+int64(entry.Size) {
 		m.mu.RUnlock()
-		return 0, nil, ErrTSMClosed
+		return 0, nil, ErrSSTClosed
 	}
 
 	// return the bytes after the 4 byte checksum

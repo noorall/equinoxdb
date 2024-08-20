@@ -3,7 +3,6 @@ package store
 import (
 	"bytes"
 	"encoding/binary"
-	"equinox/internel"
 	"equinox/pkg/pool"
 	"equinox/storage/errs"
 	"equinox/storage/types"
@@ -506,7 +505,7 @@ type WalFile struct {
 	path string
 	lock sync.RWMutex
 
-	*internel.MMapFile
+	*MMapFile
 }
 
 func NewWalFile(fid int, dir string) *WalFile {
@@ -517,7 +516,7 @@ func NewWalFile(fid int, dir string) *WalFile {
 }
 
 func (f *WalFile) Open(flags int, size int) error {
-	mmf, err := internel.OpenMmapFile(f.path, flags, size)
+	mmf, err := OpenMmapFile(f.path, flags, size)
 
 	if err != nil {
 		return errs.Errorf(err, "while opening file: %s", f.path)

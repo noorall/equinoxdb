@@ -44,10 +44,10 @@ import (
 
 const (
 	// MagicNumber is written as the first 4 bytes of a data file to
-	// identify the file as a tsm1 formatted file
+	// identify the file as a sst1 formatted file
 	MagicNumber uint32 = 0x16D116D1
 
-	// Version indicates the version of the TSM file format.
+	// Version indicates the version of the SST file format.
 	Version byte = 1
 
 	// Size in bytes of an index entry
@@ -65,20 +65,20 @@ const (
 	// max length of a key in an index entry (measurement + tags)
 	maxKeyLength = (1 << (2 * 8)) - 1
 
-	// The threshold amount data written before we periodically fsync a TSM file.  This helps avoid
-	// long pauses due to very large fsyncs at the end of writing a TSM file.
+	// The threshold amount data written before we periodically fsync a SST file.  This helps avoid
+	// long pauses due to very large fsyncs at the end of writing a SST file.
 	fsyncEvery = 25 * 1024 * 1024
 )
 
 const (
-	TSMFileExtension    = "tsm"
-	TmpTSMFileExtension = "tmp"
-	BadTSMFileExtension = "bad"
+	SSTFileExtension    = "sst"
+	TmpSSTFileExtension = "tmp"
+	BadSSTFileExtension = "bad"
 )
 
-// TSMFile represents an on-disk TSM file.
-type TSMFile interface {
-	// Path returns the underlying file path for the TSMFile.  If the file
+// SSTFile represents an on-disk SST file.
+type SSTFile interface {
+	// Path returns the underlying file path for the SSTFile.  If the file
 	// has not be written or loaded from disk, the zero value is returned.
 	Path() string
 
@@ -159,7 +159,7 @@ type TSMFile interface {
 	// Size returns the size of the file on disk in bytes.
 	Size() uint32
 
-	// Rename renames the existing TSM file to a new name and replaces the mmap backing slice using the new
+	// Rename renames the existing SST file to a new name and replaces the mmap backing slice using the new
 	// file name. Index and Reader state are not re-initialized.
 	Rename(path string) error
 
@@ -175,7 +175,7 @@ type TSMFile interface {
 	// Unref records that this file is no longer in use.
 	Unref()
 
-	// Stats returns summary information about the TSM file.
+	// Stats returns summary information about the SST file.
 	Stats() FileStat
 
 	// BlockIterator returns an iterator pointing to the first block in the file and
@@ -196,10 +196,10 @@ type FileStore struct {
 	currentGeneration int
 	dir               string
 
-	files []TSMFile
+	files []SSTFile
 
-	TsmMMAPWillNeed bool          // If true then the kernel will be advised MMAP_WILLNEED for TSM files.
-	OpenLimiter     limiter.Fixed // limit the number of concurrent opening TSM files.
+	SstMMAPWillNeed bool          // If true then the kernel will be advised MMAP_WILLNEED for SST files.
+	OpenLimiter     limiter.Fixed // limit the number of concurrent opening SST files.
 
 	logger       *zap.Logger // Logger to be used for important messages
 	traceLogger  *zap.Logger // Logger to be used when trace-logging is on.
@@ -216,7 +216,7 @@ type FileStore struct {
 	VM *VFileRegionManager
 }
 
-// FileStat holds information about a TSM file on disk.
+// FileStat holds information about a SST file on disk.
 type FileStat struct {
 	Path             string
 	HasTombstone     bool
@@ -251,7 +251,7 @@ func NewFileStore(dir string) *FileStore {
 		traceLogger:  logger,
 		OpenLimiter:  limiter.NewFixed(runtime.GOMAXPROCS(0)),
 		purger: &purger{
-			files:  map[string]TSMFile{},
+			files:  map[string]SSTFile{},
 			logger: logger,
 		},
 		parseFileName: DefaultParseFileName,
@@ -287,18 +287,16 @@ func (f *FileStore) WithLogger(log *zap.Logger) {
 	}
 }
 
-const filesSubsystem = "tsm_files"
-
-// Count returns the number of TSM files currently loaded.
+// Count returns the number of SST files currently loaded.
 func (f *FileStore) Count() int {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return len(f.files)
 }
 
-// Files returns the slice of TSM files currently loaded. This is only used for
+// Files returns the slice of SST files currently loaded. This is only used for
 // tests, and the files aren't guaranteed to stay valid in the presence of compactions.
-func (f *FileStore) Files() []TSMFile {
+func (f *FileStore) Files() []SSTFile {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	return f.files
@@ -317,7 +315,7 @@ func (f *FileStore) Free() error {
 	return nil
 }
 
-// CurrentGeneration returns the current generation of the TSM files.
+// CurrentGeneration returns the current generation of the SST files.
 func (f *FileStore) CurrentGeneration() int {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
@@ -332,7 +330,7 @@ func (f *FileStore) NextGeneration() int {
 	return f.currentGeneration
 }
 
-// WalkKeys calls fn for every key in every TSM file known to the FileStore.  If the key
+// WalkKeys calls fn for every key in every SST file known to the FileStore.  If the key
 // exists in multiple files, it will be invoked for each file.
 func (f *FileStore) WalkKeys(seek []byte, fn func(key []byte, typ byte) error) error {
 	f.mu.RLock()
@@ -393,7 +391,7 @@ func (f *FileStore) Delete(keys [][]byte) error {
 	return f.DeleteRange(keys, math.MinInt64, math.MaxInt64)
 }
 
-func (f *FileStore) Apply(ctx context.Context, fn func(r TSMFile) error) error {
+func (f *FileStore) Apply(ctx context.Context, fn func(r SSTFile) error) error {
 	// Limit apply fn to number of cores
 	limiter := limiter.NewFixed(runtime.GOMAXPROCS(0))
 
@@ -401,7 +399,7 @@ func (f *FileStore) Apply(ctx context.Context, fn func(r TSMFile) error) error {
 	errC := make(chan error, len(f.files))
 
 	for _, f := range f.files {
-		go func(r TSMFile) {
+		go func(r SSTFile) {
 			if err := limiter.Take(ctx); err != nil {
 				errC <- err
 				return
@@ -465,7 +463,7 @@ func (f *FileStore) DeleteRange(keys [][]byte, min, max int64) error {
 	return nil
 }
 
-// Open loads all the TSM files in the configured directory.
+// Open loads all the SST files in the configured directory.
 func (f *FileStore) Open(ctx context.Context) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -489,7 +487,7 @@ func (f *FileStore) Open(ctx context.Context) error {
 	// directories and choosing the one with the higest basename when converted
 	// to an integer.
 	for _, fi := range tmpfiles {
-		if !fi.IsDir() || !strings.HasSuffix(fi.Name(), "."+TmpTSMFileExtension) {
+		if !fi.IsDir() || !strings.HasSuffix(fi.Name(), "."+TmpSSTFileExtension) {
 			continue
 		}
 
@@ -508,14 +506,14 @@ func (f *FileStore) Open(ctx context.Context) error {
 		f.currentTempDirID = i
 	}
 
-	files, err := filepath.Glob(filepath.Join(f.dir, "*."+TSMFileExtension))
+	files, err := filepath.Glob(filepath.Join(f.dir, "*."+SSTFileExtension))
 	if err != nil {
 		return err
 	}
 
 	// struct to hold the result of opening each reader in a goroutine
 	type res struct {
-		r   *TSMReader
+		r   *SSTReader
 		err error
 	}
 
@@ -537,30 +535,30 @@ func (f *FileStore) Open(ctx context.Context) error {
 		}
 
 		go func(idx int, file *os.File) {
-			// Ensure a limited number of TSM files are loaded at once.
+			// Ensure a limited number of SST files are loaded at once.
 			// Systems which have very large datasets (1TB+) can have thousands
-			// of TSM files which can cause extremely long load times.
+			// of SST files which can cause extremely long load times.
 			if err := f.OpenLimiter.Take(ctx); err != nil {
-				f.logger.Error("Failed to open tsm file", zap.String("path", file.Name()), zap.Error(err))
-				readerC <- &res{err: fmt.Errorf("failed to open tsm file %q: %w", file.Name(), err)}
+				f.logger.Error("Failed to open sst file", zap.String("path", file.Name()), zap.Error(err))
+				readerC <- &res{err: fmt.Errorf("failed to open sst file %q: %w", file.Name(), err)}
 				return
 			}
 			defer f.OpenLimiter.Release()
 
 			start := time.Now()
-			df, err := NewTSMReader(file, f.VM, WithMadviseWillNeed(f.TsmMMAPWillNeed))
+			df, err := NewSSTReader(file, f.VM, WithMadviseWillNeed(f.SstMMAPWillNeed))
 			f.logger.Info("Opened file",
 				zap.String("path", file.Name()),
 				zap.Int("id", idx),
 				zap.Duration("duration", time.Since(start)))
 
-			// If we are unable to read a TSM file then log the error, rename
+			// If we are unable to read a SST file then log the error, rename
 			// the file, and continue loading the shard without it.
 			if err != nil {
-				f.logger.Error("Cannot read corrupt tsm file, renaming", zap.String("path", file.Name()), zap.Int("id", idx), zap.Error(err))
+				f.logger.Error("Cannot read corrupt sst file, renaming", zap.String("path", file.Name()), zap.Int("id", idx), zap.Error(err))
 				file.Close()
-				if e := os.Rename(file.Name(), file.Name()+"."+BadTSMFileExtension); e != nil {
-					f.logger.Error("Cannot rename corrupt tsm file", zap.String("path", file.Name()), zap.Int("id", idx), zap.Error(e))
+				if e := os.Rename(file.Name(), file.Name()+"."+BadSSTFileExtension); e != nil {
+					f.logger.Error("Cannot rename corrupt sst file", zap.String("path", file.Name()), zap.Int("id", idx), zap.Error(e))
 					readerC <- &res{r: df, err: fmt.Errorf("cannot rename corrupt file %s: %v", file.Name(), e)}
 					return
 				}
@@ -600,7 +598,7 @@ func (f *FileStore) Open(ctx context.Context) error {
 	}
 	close(readerC)
 
-	sort.Sort(tsmReaders(f.files))
+	sort.Sort(sstReaders(f.files))
 	return nil
 }
 
@@ -652,16 +650,16 @@ func (f *FileStore) Read(key []byte, t int64) ([]types.Value, error) {
 	return nil, nil
 }
 
-// TSMReader returns a TSMReader for path if one is currently managed by the FileStore.
+// SSTReader returns a SSTReader for path if one is currently managed by the FileStore.
 // Otherwise it returns nil. If it returns a file, you must call Unref on it when
 // you are done, and never use it after that.
-func (f *FileStore) TSMReader(path string) *TSMReader {
+func (f *FileStore) SSTReader(path string) *SSTReader {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	for _, r := range f.files {
 		if r.Path() == path {
 			r.Ref()
-			return r.(*TSMReader)
+			return r.(*SSTReader)
 		}
 	}
 	return nil
@@ -705,7 +703,7 @@ func (f *FileStore) Stats() []FileStat {
 }
 
 // ReplaceWithCallback replaces oldFiles with newFiles and calls updatedFn with the files to be added the FileStore.
-func (f *FileStore) ReplaceWithCallback(oldFiles, newFiles []string, updatedFn func(r []TSMFile)) error {
+func (f *FileStore) ReplaceWithCallback(oldFiles, newFiles []string, updatedFn func(r []SSTFile)) error {
 	return f.replace(oldFiles, newFiles, updatedFn)
 }
 
@@ -714,7 +712,7 @@ func (f *FileStore) Replace(oldFiles, newFiles []string) error {
 	return f.replace(oldFiles, newFiles, nil)
 }
 
-func (f *FileStore) replace(oldFiles, newFiles []string, updatedFn func(r []TSMFile)) error {
+func (f *FileStore) replace(oldFiles, newFiles []string, updatedFn func(r []SSTFile)) error {
 	if len(oldFiles) == 0 && len(newFiles) == 0 {
 		return nil
 	}
@@ -723,19 +721,19 @@ func (f *FileStore) replace(oldFiles, newFiles []string, updatedFn func(r []TSMF
 	maxTime := f.lastModified
 	f.mu.RUnlock()
 
-	updated := make([]TSMFile, 0, len(newFiles))
-	tsmTmpExt := fmt.Sprintf("%s.%s", TSMFileExtension, TmpTSMFileExtension)
+	updated := make([]SSTFile, 0, len(newFiles))
+	sstTmpExt := fmt.Sprintf("%s.%s", SSTFileExtension, TmpSSTFileExtension)
 
 	// Rename all the new files to make them live on restart
 	for _, file := range newFiles {
-		if !strings.HasSuffix(file, tsmTmpExt) && !strings.HasSuffix(file, TSMFileExtension) {
-			// This isn't a .tsm or .tsm.tmp file.
+		if !strings.HasSuffix(file, sstTmpExt) && !strings.HasSuffix(file, SSTFileExtension) {
+			// This isn't a .sst or .sst.tmp file.
 			continue
 		}
 
 		var oldName, newName = file, file
-		if strings.HasSuffix(oldName, tsmTmpExt) {
-			// The new TSM files have a tmp extension.  First rename them.
+		if strings.HasSuffix(oldName, sstTmpExt) {
+			// The new SST files have a tmp extension.  First rename them.
 			newName = file[:len(file)-4]
 			if err := os.Rename(oldName, newName); err != nil {
 				return err
@@ -762,7 +760,7 @@ func (f *FileStore) replace(oldFiles, newFiles []string, updatedFn func(r []TSMF
 			}
 		}
 
-		tsm, err := NewTSMReader(fd, f.VM, WithMadviseWillNeed(f.TsmMMAPWillNeed))
+		sst, err := NewSSTReader(fd, f.VM, WithMadviseWillNeed(f.SstMMAPWillNeed))
 		if err != nil {
 			if newName != oldName {
 				if err1 := os.Rename(newName, oldName); err1 != nil {
@@ -772,7 +770,7 @@ func (f *FileStore) replace(oldFiles, newFiles []string, updatedFn func(r []TSMF
 			return err
 		}
 
-		updated = append(updated, tsm)
+		updated = append(updated, sst)
 	}
 
 	if updatedFn != nil {
@@ -790,7 +788,7 @@ func (f *FileStore) replace(oldFiles, newFiles []string, updatedFn func(r []TSMF
 	updated = append(updated, f.files...)
 
 	// We need to prune our set of active files now
-	var active, inuse []TSMFile
+	var active, inuse []SSTFile
 	for _, file := range updated {
 		keep := true
 		for _, remove := range oldFiles {
@@ -808,19 +806,19 @@ func (f *FileStore) replace(oldFiles, newFiles []string, updatedFn func(r []TSMF
 				// exactly once, and never use it again). InUse is only valid during a write lock, since
 				// we allow calls to Ref and Unref under the read lock and no lock at all respectively.
 				if file.InUse() {
-					// Copy all the tombstones related to this TSM file
+					// Copy all the tombstones related to this SST file
 					var deletes []string
 					if ts := file.TombstoneStats(); ts.TombstoneExists {
 						deletes = append(deletes, ts.Path)
 					}
 
-					// Rename the TSM file used by this reader
-					tempPath := fmt.Sprintf("%s.%s", file.Path(), TmpTSMFileExtension)
+					// Rename the SST file used by this reader
+					tempPath := fmt.Sprintf("%s.%s", file.Path(), TmpSSTFileExtension)
 					if err := file.Rename(tempPath); err != nil {
 						return err
 					}
 
-					// Remove the old file and tombstones.  We can't use the normal TSMReader.Remove()
+					// Remove the old file and tombstones.  We can't use the normal SSTReader.Remove()
 					// because it now refers to our temp file which we can't remove.
 					for _, f := range deletes {
 						if err := os.Remove(f); err != nil {
@@ -866,7 +864,7 @@ func (f *FileStore) replace(oldFiles, newFiles []string, updatedFn func(r []TSMF
 
 	f.lastFileStats = nil
 	f.files = active
-	sort.Sort(tsmReaders(f.files))
+	sort.Sort(sstReaders(f.files))
 
 	// Recalculate the disk size stat
 	var totalSize int64
@@ -881,7 +879,7 @@ func (f *FileStore) replace(oldFiles, newFiles []string, updatedFn func(r []TSMF
 }
 
 // LastModified returns the last time the file store was updated with new
-// TSM files or a delete.
+// SST files or a delete.
 func (f *FileStore) LastModified() time.Time {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
@@ -986,16 +984,16 @@ func (f *FileStore) locations(key []byte, t int64, ascending bool) []*location {
 	return locations
 }
 
-// MakeSnapshotLinks creates hardlinks from the supplied TSMFiles to
+// MakeSnapshotLinks creates hardlinks from the supplied SSTFiles to
 // corresponding files under a supplied directory.
-func (f *FileStore) MakeSnapshotLinks(destPath string, files []TSMFile) (returnErr error) {
-	for _, tsmf := range files {
-		newpath := filepath.Join(destPath, filepath.Base(tsmf.Path()))
-		err := f.copyOrLink(tsmf.Path(), newpath)
+func (f *FileStore) MakeSnapshotLinks(destPath string, files []SSTFile) (returnErr error) {
+	for _, sstf := range files {
+		newpath := filepath.Join(destPath, filepath.Base(sstf.Path()))
+		err := f.copyOrLink(sstf.Path(), newpath)
 		if err != nil {
 			return err
 		}
-		if tf := tsmf.TombstoneStats(); tf.TombstoneExists {
+		if tf := sstf.TombstoneStats(); tf.TombstoneExists {
 			newpath := filepath.Join(destPath, filepath.Base(tf.Path))
 			err := f.copyOrLink(tf.Path, newpath)
 			if err != nil {
@@ -1081,7 +1079,7 @@ func (f *FileStore) linkNotCopy(oldPath, newPath string) error {
 	}
 }
 
-// CreateSnapshot creates hardlinks for all tsm and tombstone files
+// CreateSnapshot creates hardlinks for all sst and tombstone files
 // in the path provided.
 func (f *FileStore) CreateSnapshot() (string, error) {
 	f.traceLogger.Info("Creating snapshot", zap.String("dir", f.dir))
@@ -1089,18 +1087,18 @@ func (f *FileStore) CreateSnapshot() (string, error) {
 	f.mu.Lock()
 	// create a copy of the files slice and ensure they aren't closed out from
 	// under us, nor the slice mutated.
-	files := make([]TSMFile, len(f.files))
+	files := make([]SSTFile, len(f.files))
 	copy(files, f.files)
 
-	for _, tsmf := range files {
-		tsmf.Ref()
-		defer tsmf.Unref()
+	for _, sstf := range files {
+		sstf.Ref()
+		defer sstf.Unref()
 	}
 
 	// increment and keep track of the current temp dir for when we drop the lock.
 	// this ensures we are the only writer to the directory.
 	f.currentTempDirID += 1
-	tmpPath := fmt.Sprintf("%d.%s", f.currentTempDirID, TmpTSMFileExtension)
+	tmpPath := fmt.Sprintf("%d.%s", f.currentTempDirID, TmpSSTFileExtension)
 	tmpPath = filepath.Join(f.dir, tmpPath)
 	f.mu.Unlock()
 
@@ -1139,8 +1137,8 @@ func (f *FileStore) getDataBlock(block []byte) ([]byte, error) {
 	return block, nil
 }
 
-type tsmReaders []TSMFile
+type sstReaders []SSTFile
 
-func (a tsmReaders) Len() int           { return len(a) }
-func (a tsmReaders) Less(i, j int) bool { return a[i].Path() < a[j].Path() }
-func (a tsmReaders) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a sstReaders) Len() int           { return len(a) }
+func (a sstReaders) Less(i, j int) bool { return a[i].Path() < a[j].Path() }
+func (a sstReaders) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }

@@ -147,7 +147,7 @@ func (e *BooleanDecoder) SetBytes(b []byte) {
 	e.n = int(count)
 
 	if min := len(e.b) * 8; min < e.n {
-		// Shouldn't happen - TSM file was truncated/corrupted
+		// Shouldn't happen - SST file was truncated/corrupted
 		e.n = min
 	}
 }
@@ -379,7 +379,7 @@ func BooleanArrayDecodeAll(b []byte, dst []bool) ([]bool, error) {
 
 	b = b[n:]
 	if min := len(b) * 8; min < count {
-		// Shouldn't happen - TSM file was truncated/corrupted
+		// Shouldn't happen - SST file was truncated/corrupted
 		count = min
 	}
 

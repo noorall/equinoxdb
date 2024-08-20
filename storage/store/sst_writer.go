@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	//ErrNoValues is returned when TSMWriter.WriteIndex is called and there are no values to write.
+	//ErrNoValues is returned when SSTWriter.WriteIndex is called and there are no values to write.
 	ErrNoValues = fmt.Errorf("no values written")
 
 	// ErrMaxKeyLengthExceeded is returned when attempting to write a key that is too long.
@@ -158,7 +158,7 @@ type syncer interface {
 	Sync() error
 }
 
-// directIndex is a simple in-memory index implementation for a TSM file.  The full index
+// directIndex is a simple in-memory index implementation for a SST file.  The full index
 // must fit in memory.
 type directIndex struct {
 	keyCount int
@@ -465,16 +465,16 @@ type sstWriter struct {
 	lastSync int64
 }
 
-func NewTSMWriter(w io.Writer) (SSTWriter, error) {
+func NewSSTWriter(w io.Writer) (SSTWriter, error) {
 	index := NewIndexWriter()
 	return &sstWriter{wrapped: w, w: bufio.NewWriterSize(w, 1024*1024), index: index}, nil
 }
 
-func NewTSMWriterWithDiskBuffer(w io.Writer) (SSTWriter, error) {
+func NewSSTWriterWithDiskBuffer(w io.Writer) (SSTWriter, error) {
 	var index IndexWriter
 	// Make sure is a File so we can write the temp index alongside it.
 	if fw, ok := w.(syncer); ok {
-		f, err := os.OpenFile(strings.TrimSuffix(fw.Name(), ".tsm.tmp")+".idx.tmp", os.O_CREATE|os.O_RDWR|os.O_EXCL, 0666)
+		f, err := os.OpenFile(strings.TrimSuffix(fw.Name(), ".sst.tmp")+".idx.tmp", os.O_CREATE|os.O_RDWR|os.O_EXCL, 0666)
 		if err != nil {
 			return nil, err
 		}
@@ -555,7 +555,7 @@ func (t *sstWriter) Write(key []byte, values types.Values) error {
 	return nil
 }
 
-// WriteBlock writes block for the given key and time range to the TSM file.  If the write
+// WriteBlock writes block for the given key and time range to the SST file.  If the write
 // exceeds max entries for a given key, ErrMaxBlocksExceeded is returned.  This indicates
 // that the index is now full for this key and no future writes to this key will succeed.
 func (t *sstWriter) WriteBlock(key []byte, minTime, maxTime int64, block []byte) error {

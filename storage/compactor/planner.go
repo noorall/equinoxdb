@@ -28,7 +28,7 @@ import (
 // CompactionGroup represents a list of files eligible to be compacted together.
 type CompactionGroup []string
 
-// CompactionPlanner determines what TSM files and WAL segments to include in a
+// CompactionPlanner determines what SST files and WAL segments to include in a
 // given compaction run.
 type CompactionPlanner interface {
 	Plan(lastWrite time.Time) ([]CompactionGroup, int64)
@@ -45,15 +45,15 @@ type CompactionPlanner interface {
 }
 
 // DefaultPlanner implements CompactionPlanner using a strategy to roll up
-// multiple generations of TSM files into larger files in stages.  It attempts
-// to minimize the number of TSM files on disk while rolling up a bounder number
+// multiple generations of SST files into larger files in stages.  It attempts
+// to minimize the number of SST files on disk while rolling up a bounder number
 // of files.
 type DefaultPlanner struct {
 	FileStore FileStore
 
 	// compactFullWriteColdDuration specifies the length of time after
 	// which if no writes have been committed to the WAL, the engine will
-	// do a full compaction of the TSM files in this shard. This duration
+	// do a full compaction of the SST files in this shard. This duration
 	// should always be greater than the CacheFlushWriteColdDuration
 	compactFullWriteColdDuration time.Duration
 
@@ -65,7 +65,7 @@ type DefaultPlanner struct {
 	lastFindGenerations time.Time
 
 	// lastGenerations is the last set of generations found by findGenerations
-	lastGenerations TsmGenerations
+	lastGenerations SstGenerations
 
 	// forceFull causes the next full plan requests to plan any files
 	// that may need to be compacted.  Normally, these files are skipped and scheduled
@@ -121,7 +121,7 @@ func (c *DefaultPlanner) ForceFull() {
 	c.forceFull = true
 }
 
-// PlanLevel returns a set of TSM files to rewrite for a specific level.
+// PlanLevel returns a set of SST files to rewrite for a specific level.
 func (c *DefaultPlanner) PlanLevel(level int) ([]CompactionGroup, int64) {
 	// If a full plan has been requested, don't plan any levels which will prevent
 	// the full plan from acquiring them.
@@ -145,8 +145,8 @@ func (c *DefaultPlanner) PlanLevel(level int) ([]CompactionGroup, int64) {
 
 	// Group each generation by level such that two adjacent generations in the same
 	// level become part of the same group.
-	var currentGen TsmGenerations
-	var groups []TsmGenerations
+	var currentGen SstGenerations
+	var groups []SstGenerations
 	for i := 0; i < len(generations); i++ {
 		cur := generations[i]
 
@@ -165,7 +165,7 @@ func (c *DefaultPlanner) PlanLevel(level int) ([]CompactionGroup, int64) {
 		}
 		groups = append(groups, currentGen)
 
-		currentGen = TsmGenerations{}
+		currentGen = SstGenerations{}
 		currentGen = append(currentGen, cur)
 	}
 
@@ -174,7 +174,7 @@ func (c *DefaultPlanner) PlanLevel(level int) ([]CompactionGroup, int64) {
 	}
 
 	// Remove any groups in the wrong level
-	var levelGroups []TsmGenerations
+	var levelGroups []SstGenerations
 	for _, cur := range groups {
 		if cur.level() == level {
 			levelGroups = append(levelGroups, cur)
@@ -215,8 +215,8 @@ func (c *DefaultPlanner) PlanLevel(level int) ([]CompactionGroup, int64) {
 	return cGroups, int64(len(cGroups))
 }
 
-// PlanOptimize returns all TSM files if they are in different generations in order
-// to optimize the index across TSM files.  Each returned compaction group can be
+// PlanOptimize returns all SST files if they are in different generations in order
+// to optimize the index across SST files.  Each returned compaction group can be
 // compacted concurrently.
 func (c *DefaultPlanner) PlanOptimize() ([]CompactionGroup, int64) {
 	// If a full plan has been requested, don't plan any levels which will prevent
@@ -241,13 +241,13 @@ func (c *DefaultPlanner) PlanOptimize() ([]CompactionGroup, int64) {
 
 	// Group each generation by level such that two adjacent generations in the same
 	// level become part of the same group.
-	var currentGen TsmGenerations
-	var groups []TsmGenerations
+	var currentGen SstGenerations
+	var groups []SstGenerations
 	for i := 0; i < len(generations); i++ {
 		cur := generations[i]
 
 		// Skip the File if it's over the max size and contains a full block and it does not have any tombstones
-		if cur.count() > 2 && cur.size() > uint64(maxTSMFileSize) && c.FileStore.BlockCount(cur.files[0].Path, 1) == DefaultMaxPointsPerBlock && !cur.hasTombstones() {
+		if cur.count() > 2 && cur.size() > uint64(maxSSTFileSize) && c.FileStore.BlockCount(cur.files[0].Path, 1) == DefaultMaxPointsPerBlock && !cur.hasTombstones() {
 			continue
 		}
 
@@ -266,7 +266,7 @@ func (c *DefaultPlanner) PlanOptimize() ([]CompactionGroup, int64) {
 		}
 		groups = append(groups, currentGen)
 
-		currentGen = TsmGenerations{}
+		currentGen = SstGenerations{}
 		currentGen = append(currentGen, cur)
 	}
 
@@ -276,7 +276,7 @@ func (c *DefaultPlanner) PlanOptimize() ([]CompactionGroup, int64) {
 
 	// Only optimize level 4 files since using lower-levels will collide
 	// with the level planners
-	var levelGroups []TsmGenerations
+	var levelGroups []SstGenerations
 	for _, cur := range groups {
 		if cur.level() == 4 {
 			levelGroups = append(levelGroups, cur)
@@ -307,7 +307,7 @@ func (c *DefaultPlanner) PlanOptimize() ([]CompactionGroup, int64) {
 	return cGroups, int64(len(cGroups))
 }
 
-// Plan returns a set of TSM files to rewrite for level 4 or higher.  The planning returns
+// Plan returns a set of SST files to rewrite for level 4 or higher.  The planning returns
 // multiple groups if possible to allow compactions to run concurrently.
 func (c *DefaultPlanner) Plan(lastWrite time.Time) ([]CompactionGroup, int64) {
 	generations := c.findGenerations(true)
@@ -326,13 +326,13 @@ func (c *DefaultPlanner) Plan(lastWrite time.Time) ([]CompactionGroup, int64) {
 			c.mu.Unlock()
 		}
 
-		var tsmFiles []string
+		var sstFiles []string
 		var genCount int
 		for i, group := range generations {
 			var skip bool
 
 			// Skip the File if it's over the max size and contains a full block and it does not have any tombstones
-			if len(generations) > 2 && group.size() > uint64(maxTSMFileSize) && c.FileStore.BlockCount(group.files[0].Path, 1) == DefaultMaxPointsPerBlock && !group.hasTombstones() {
+			if len(generations) > 2 && group.size() > uint64(maxSSTFileSize) && c.FileStore.BlockCount(group.files[0].Path, 1) == DefaultMaxPointsPerBlock && !group.hasTombstones() {
 				skip = true
 			}
 
@@ -351,18 +351,18 @@ func (c *DefaultPlanner) Plan(lastWrite time.Time) ([]CompactionGroup, int64) {
 			}
 
 			for _, f := range group.files {
-				tsmFiles = append(tsmFiles, f.Path)
+				sstFiles = append(sstFiles, f.Path)
 			}
 			genCount += 1
 		}
-		sort.Strings(tsmFiles)
+		sort.Strings(sstFiles)
 
 		// Make sure we have more than 1 File and more than 1 generation
-		if len(tsmFiles) <= 1 || genCount <= 1 {
+		if len(sstFiles) <= 1 || genCount <= 1 {
 			return nil, 0
 		}
 
-		group := []CompactionGroup{tsmFiles}
+		group := []CompactionGroup{sstFiles}
 		if !c.acquire(group) {
 			return nil, int64(len(group))
 		}
@@ -408,7 +408,7 @@ func (c *DefaultPlanner) Plan(lastWrite time.Time) ([]CompactionGroup, int64) {
 		// Skip the File if it's over the max size and contains a full block or the generation is split
 		// over multiple files.  In the latter case, that would mean the data in the File spilled over
 		// the 2GB limit.
-		if g.size() > uint64(maxTSMFileSize) && c.FileStore.BlockCount(g.files[0].Path, 1) == DefaultMaxPointsPerBlock {
+		if g.size() > uint64(maxSSTFileSize) && c.FileStore.BlockCount(g.files[0].Path, 1) == DefaultMaxPointsPerBlock {
 			start = i + 1
 		}
 
@@ -435,7 +435,7 @@ func (c *DefaultPlanner) Plan(lastWrite time.Time) ([]CompactionGroup, int64) {
 
 	// Loop through the generations in groups of size step and see if we can compact all (or
 	// some of them as group)
-	groups := []TsmGenerations{}
+	groups := []SstGenerations{}
 	for i := 0; i < len(generations); i += step {
 		var skipGroup bool
 		startIndex := i
@@ -452,7 +452,7 @@ func (c *DefaultPlanner) Plan(lastWrite time.Time) ([]CompactionGroup, int64) {
 			}
 
 			// Skip the File if it's over the max size and it contains a full block
-			if gen.size() >= uint64(maxTSMFileSize) && c.FileStore.BlockCount(gen.files[0].Path, 1) == DefaultMaxPointsPerBlock && !gen.hasTombstones() {
+			if gen.size() >= uint64(maxSSTFileSize) && c.FileStore.BlockCount(gen.files[0].Path, 1) == DefaultMaxPointsPerBlock && !gen.hasTombstones() {
 				startIndex++
 				continue
 			}
@@ -476,7 +476,7 @@ func (c *DefaultPlanner) Plan(lastWrite time.Time) ([]CompactionGroup, int64) {
 	}
 
 	// With the groups, we need to evaluate whether the group as a whole can be compacted
-	compactable := []TsmGenerations{}
+	compactable := []SstGenerations{}
 	for _, group := range groups {
 		// if we don't have enough generations to compact, skip it
 		if len(group) < 4 && !group.hasTombstones() {
@@ -487,7 +487,7 @@ func (c *DefaultPlanner) Plan(lastWrite time.Time) ([]CompactionGroup, int64) {
 
 	// All the files to be compacted must be compacted in order.  We need to convert each
 	// group to the actual set of files in that group to be compacted.
-	var tsmFiles []CompactionGroup
+	var sstFiles []CompactionGroup
 	for _, c := range compactable {
 		var cGroup CompactionGroup
 		for _, group := range c {
@@ -496,20 +496,20 @@ func (c *DefaultPlanner) Plan(lastWrite time.Time) ([]CompactionGroup, int64) {
 			}
 		}
 		sort.Strings(cGroup)
-		tsmFiles = append(tsmFiles, cGroup)
+		sstFiles = append(sstFiles, cGroup)
 	}
 
-	if !c.acquire(tsmFiles) {
-		return nil, int64(len(tsmFiles))
+	if !c.acquire(sstFiles) {
+		return nil, int64(len(sstFiles))
 	}
-	return tsmFiles, int64(len(tsmFiles))
+	return sstFiles, int64(len(sstFiles))
 }
 
-// findGenerations groups all the TSM files by generation based
+// findGenerations groups all the SST files by generation based
 // on their filename, then returns the generations in descending order (newest first).
-// If skipInUse is true, tsm files that are part of an existing compaction plan
+// If skipInUse is true, sst files that are part of an existing compaction plan
 // are not returned.
-func (c *DefaultPlanner) findGenerations(skipInUse bool) TsmGenerations {
+func (c *DefaultPlanner) findGenerations(skipInUse bool) SstGenerations {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -521,9 +521,9 @@ func (c *DefaultPlanner) findGenerations(skipInUse bool) TsmGenerations {
 	}
 
 	genTime := c.FileStore.LastModified()
-	tsmStats := c.FileStore.Stats()
-	generations := make(map[int]*tsmGeneration, len(tsmStats))
-	for _, f := range tsmStats {
+	sstStats := c.FileStore.Stats()
+	generations := make(map[int]*sstGeneration, len(sstStats))
+	for _, f := range sstStats {
 		gen, _, _ := c.ParseFileName(f.Path)
 
 		// Skip any files that are assigned to a current compaction plan
@@ -533,13 +533,13 @@ func (c *DefaultPlanner) findGenerations(skipInUse bool) TsmGenerations {
 
 		group := generations[gen]
 		if group == nil {
-			group = newTsmGeneration(gen, c.ParseFileName)
+			group = newSstGeneration(gen, c.ParseFileName)
 			generations[gen] = group
 		}
 		group.files = append(group.files, f)
 	}
 
-	orderedGenerations := make(TsmGenerations, 0, len(generations))
+	orderedGenerations := make(SstGenerations, 0, len(generations))
 	for _, g := range generations {
 		orderedGenerations = append(orderedGenerations, g)
 	}
