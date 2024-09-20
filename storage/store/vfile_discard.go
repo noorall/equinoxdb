@@ -36,7 +36,7 @@ const (
 type discard struct {
 	next int
 
-	sync.Mutex // because the difference reader and writer
+	sync.RWMutex // because the difference reader and writer
 	*MMapFile
 }
 
@@ -121,11 +121,11 @@ func (d *discard) _update(fid uint64, count int64) uint64 {
 }
 
 func (d *discard) Max() (uint32, uint64) {
-	d.Lock()
-	defer d.Unlock()
+	d.RLock()
+	defer d.RUnlock()
 
 	var maxFid, maxCount uint64
-	d.Iterate(func(fid, count uint64) {
+	d.iterate(func(fid, count uint64) {
 		if count > maxCount {
 			maxFid = fid
 			maxCount = count
@@ -135,6 +135,13 @@ func (d *discard) Max() (uint32, uint64) {
 }
 
 func (d *discard) Iterate(f func(fid, count uint64)) {
+	d.RLock()
+	defer d.RUnlock()
+
+	d.iterate(f)
+}
+
+func (d *discard) iterate(f func(fid, count uint64)) {
 	for i := 0; i < d.next; i++ {
 		f(d.get(i*entrySize), d.get(i*entrySize+8))
 	}

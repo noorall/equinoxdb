@@ -18,9 +18,34 @@
 
 package types
 
-type ValuePtr struct {
-	MinTime, MaxTime int64
-	FileNo           uint32
-	Offset           int64
-	Size             uint32
+import (
+	"fmt"
+	"time"
+)
+
+type PtrValue struct {
+	unixNano int64
+	value    []byte
 }
+
+func NewPtrValueValue(t int64, v []byte) Value {
+	return PtrValue{unixNano: t, value: v}
+}
+
+func (v PtrValue) Size() int {
+	return len(v.value) + 8
+}
+
+func (v PtrValue) UnixNano() int64 {
+	return v.unixNano
+}
+
+func (v PtrValue) Value() interface{} {
+	return v.value
+}
+
+func (v PtrValue) String() string {
+	return fmt.Sprintf("%v %v", time.Unix(0, v.unixNano), v.Value())
+}
+
+func (v PtrValue) RawValue() []byte { return v.value }

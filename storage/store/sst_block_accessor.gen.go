@@ -20,7 +20,7 @@ func (m *mmapAccessor) readFloatBlock(entry *IndexEntry, values *[]types.FloatVa
 	}
 
 	var a []types.FloatValue
-	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])
+	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
 		for _, dataBlock := range dataBlocks {
 			*values, err = codec.DecodeFloatBlock(dataBlock, values)
@@ -50,7 +50,7 @@ func (m *mmapAccessor) readFloatArrayBlock(entry *IndexEntry, values *types.Floa
 		return ErrSSTClosed
 	}
 
-	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])
+	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
 		for _, dataBlock := range dataBlocks {
 			var tmp types.FloatArray
@@ -77,7 +77,7 @@ func (m *mmapAccessor) readIntegerBlock(entry *IndexEntry, values *[]types.Integ
 	}
 
 	var a []types.IntegerValue
-	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])
+	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
 		for _, dataBlock := range dataBlocks {
 			*values, err = codec.DecodeIntegerBlock(dataBlock, values)
@@ -107,7 +107,7 @@ func (m *mmapAccessor) readIntegerArrayBlock(entry *IndexEntry, values *types.In
 		return ErrSSTClosed
 	}
 
-	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])
+	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
 		for _, dataBlock := range dataBlocks {
 			var tmp types.IntegerArray
@@ -134,7 +134,7 @@ func (m *mmapAccessor) readUnsignedBlock(entry *IndexEntry, values *[]types.Unsi
 	}
 
 	var a []types.UnsignedValue
-	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])
+	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
 		for _, dataBlock := range dataBlocks {
 			*values, err = codec.DecodeUnsignedBlock(dataBlock, values)
@@ -164,7 +164,7 @@ func (m *mmapAccessor) readUnsignedArrayBlock(entry *IndexEntry, values *types.U
 		return ErrSSTClosed
 	}
 
-	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])
+	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
 		for _, dataBlock := range dataBlocks {
 			var tmp types.UnsignedArray
@@ -191,7 +191,7 @@ func (m *mmapAccessor) readStringBlock(entry *IndexEntry, values *[]types.String
 	}
 
 	var a []types.StringValue
-	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])
+	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
 		for _, dataBlock := range dataBlocks {
 			*values, err = codec.DecodeStringBlock(dataBlock, values)
@@ -221,7 +221,7 @@ func (m *mmapAccessor) readStringArrayBlock(entry *IndexEntry, values *types.Str
 		return ErrSSTClosed
 	}
 
-	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])
+	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
 		for _, dataBlock := range dataBlocks {
 			var tmp types.StringArray
@@ -248,7 +248,7 @@ func (m *mmapAccessor) readBooleanBlock(entry *IndexEntry, values *[]types.Boole
 	}
 
 	var a []types.BooleanValue
-	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])
+	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
 		for _, dataBlock := range dataBlocks {
 			*values, err = codec.DecodeBooleanBlock(dataBlock, values)
@@ -278,7 +278,7 @@ func (m *mmapAccessor) readBooleanArrayBlock(entry *IndexEntry, values *types.Bo
 		return ErrSSTClosed
 	}
 
-	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])
+	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
 		for _, dataBlock := range dataBlocks {
 			var tmp types.BooleanArray

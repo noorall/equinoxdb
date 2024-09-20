@@ -18,17 +18,47 @@
 
 package store
 
-type VFileReader struct {
-	f      *MMapFile
-	offset uint32
+import (
+	"fmt"
+	"hash/crc32"
+)
+
+type ValueFileIterator struct {
+	f *ValueFile
+
+	offset        uint32
+	lenValueBlock uint32
+	header        *VFileHeader
 }
 
-func (r *VFileReader) ReadHeader() (*VFileHeader, error) {
-	b := r.f.Data[r.offset : r.offset+VFileHeaderSize]
-	header := &VFileHeader{}
-	err := header.UnmarshalBinary(b)
-	if err != nil {
-		return nil, err
+func NewValueFileIterator(f *ValueFile) *ValueFileIterator {
+	return &ValueFileIterator{f: f, header: &VFileHeader{}}
+}
+
+func (r *ValueFileIterator) Next() error {
+	if r.offset+VFileHeaderSize > r.f.size {
+		return fmt.Errorf("no next left")
 	}
-	return header, nil
+	b := r.f.Data[r.offset : r.offset+VFileHeaderSize]
+	err := r.header.UnmarshalBinary(b)
+	if err != nil {
+		return err
+	}
+	r.lenValueBlock = uint32(r.header.KeyLen) + crc32.Size + r.header.DataLen
+	r.offset = r.offset + VFileHeaderSize + r.lenValueBlock
+	return nil
+}
+
+func (r *ValueFileIterator) ReadHeader() *VFileHeader {
+	return r.header
+}
+
+func (r *ValueFileIterator) ReadKey() []byte {
+	start := r.offset - r.lenValueBlock
+	return r.f.Data[start : start+uint32(r.header.KeyLen)]
+}
+
+func (r *ValueFileIterator) ReadValueBlock() []byte {
+	start := r.offset - r.lenValueBlock + uint32(r.header.KeyLen) + crc32.Size
+	return r.f.Data[start : start+r.header.DataLen]
 }

@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"equinox/storage/memory"
 	"go.uber.org/zap"
 	"os"
 	"sync"
@@ -76,17 +77,16 @@ func (e *Engine) compactMemTable() {
 		case <-quit:
 			return
 		case <-t.C:
-			e.doCompactMemTable()
+			mt := e.mm.TakeFlushMemTable()
+			if mt == nil {
+				return
+			}
+			e.doCompactMemTable(mt)
 		}
 	}
 }
 
-func (e *Engine) doCompactMemTable() {
-	mt := e.mm.TakeFlushMemTable()
-	if mt == nil {
-		e.logger.Warn("Flush: take a empty memTable")
-		return
-	}
+func (e *Engine) doCompactMemTable(mt *memory.MemTable) {
 	for {
 		e.mu.RLock()
 		quit := e.snapDone

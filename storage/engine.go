@@ -46,6 +46,8 @@ type Engine struct {
 	filestore *store.FileStore
 
 	vFileRegionManager *store.VFileRegionManager
+	vFileGcDone        chan struct{}
+	vFileGcWG          *sync.WaitGroup
 
 	syncWrite bool
 
@@ -208,6 +210,11 @@ func (e *Engine) DeleteRangeBatch(keys [][]byte, min, max int64) error {
 
 	var overlapsTimeRangeMinMax bool
 	var overlapsTimeRangeMinMaxLock sync.Mutex
+
+	e.disableLevelCompactions(true)
+	e.disableValueFileGc()
+	defer e.enableLevelCompactions(true)
+	defer e.enableValueFileGc()
 
 	_ = e.filestore.Apply(context.Background(), func(r store.SSTFile) error {
 		if r.OverlapsTimeRange(min, max) {

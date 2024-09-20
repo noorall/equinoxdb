@@ -201,7 +201,7 @@ func (m *mmapAccessor) readBlock(entry *IndexEntry, values []types.Value) ([]typ
 		return nil, ErrSSTClosed
 	}
 	//TODO: Validate checksum
-	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])
+	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
 		var buf []types.Value
 		values = values[:0]
@@ -273,7 +273,7 @@ func (m *mmapAccessor) readAll(key []byte) ([]types.Value, error) {
 		temp = temp[:0]
 		// The +4 is the 4 byte checksum length
 		var dataBlocks [][]byte
-		dataBlocks, err = m.vr.ReadDataBlocks(m.b[block.Offset+4 : block.Offset+int64(block.Size)])
+		dataBlocks, err = m.vr.ReadDataBlocks(m.b[block.Offset+4:block.Offset+int64(block.Size)], false, nil)
 
 		if err != nil {
 			return nil, err
