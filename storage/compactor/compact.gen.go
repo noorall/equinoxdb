@@ -83,6 +83,9 @@ func (it *sstBatchKeyIterator) combineFloat(dedup bool) blocks {
 				}
 
 				for _, b := range dataBlocks {
+					if b == nil || len(b) == 0 {
+						continue
+					}
 					var v2 types.FloatArray
 					if err = codec.DecodeFloatArrayBlock(b, &v2); err != nil {
 						it.handleDecodeError(err, "float")
@@ -327,6 +330,9 @@ func (it *sstBatchKeyIterator) combineInteger(dedup bool) blocks {
 				}
 
 				for _, b := range dataBlocks {
+					if b == nil || len(b) == 0 {
+						continue
+					}
 					var v2 types.IntegerArray
 					if err = codec.DecodeIntegerArrayBlock(b, &v2); err != nil {
 						it.handleDecodeError(err, "integer")
@@ -571,6 +577,9 @@ func (it *sstBatchKeyIterator) combineUnsigned(dedup bool) blocks {
 				}
 
 				for _, b := range dataBlocks {
+					if b == nil || len(b) == 0 {
+						continue
+					}
 					var v2 types.UnsignedArray
 					if err = codec.DecodeUnsignedArrayBlock(b, &v2); err != nil {
 						it.handleDecodeError(err, "unsigned")
@@ -815,6 +824,9 @@ func (it *sstBatchKeyIterator) combineString(dedup bool) blocks {
 				}
 
 				for _, b := range dataBlocks {
+					if b == nil || len(b) == 0 {
+						continue
+					}
 					var v2 types.StringArray
 					if err = codec.DecodeStringArrayBlock(b, &v2); err != nil {
 						it.handleDecodeError(err, "string")
@@ -1059,6 +1071,9 @@ func (it *sstBatchKeyIterator) combineBoolean(dedup bool) blocks {
 				}
 
 				for _, b := range dataBlocks {
+					if b == nil || len(b) == 0 {
+						continue
+					}
 					var v2 types.BooleanArray
 					if err = codec.DecodeBooleanArrayBlock(b, &v2); err != nil {
 						it.handleDecodeError(err, "boolean")

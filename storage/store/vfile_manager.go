@@ -183,8 +183,9 @@ func (v *VFileManager) WriteBlock(key []byte, minTime, maxTime int64, block []by
 
 func (v *VFileManager) Read(vp *ValuePtr) ([]byte, error) {
 	vf, err := v.getValueFile(vp)
+	// has been gc
 	if err != nil {
-		return nil, err
+		return []byte{}, nil
 	}
 	defer vf.lock.RUnlock()
 

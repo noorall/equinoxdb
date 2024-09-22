@@ -79,6 +79,9 @@ func (it *sstBatchKeyIterator) combine{{.Name}}(dedup bool) blocks {
                 }
 
                 for _, b := range dataBlocks {
+					if b == nil || len(b) == 0{
+						continue
+					}
                     var v2 types.{{.Name}}Array
                     if err = codec.Decode{{.Name}}ArrayBlock(b, &v2); err != nil {
                         it.handleDecodeError(err, "{{.name}}")
