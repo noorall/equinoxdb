@@ -81,7 +81,7 @@ func TestWritePoints2(e *storage.Engine, wg *sync.WaitGroup) {
 	wg.Done()
 }
 
-func main() {
+func main2() {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	//wg.Add(1)

@@ -30,7 +30,7 @@ func (it *sstBatchKeyIterator) mergeFloat() {
 		for i := 1; !dedup && i < len(it.blocks); i++ {
 			dedup = it.blocks[i].partiallyRead() ||
 				it.blocks[i].overlapsTimeRange(it.blocks[i-1].minTime, it.blocks[i-1].maxTime) ||
-				len(it.blocks[i].tombstones) > 0
+				len(it.blocks[i].tombstones) > 0 || (codec.IsPtrBlock(it.blocks[i].b) && codec.PtrBlockCount(it.blocks[i].b) > it.separateThreshold)
 		}
 
 	}
@@ -277,7 +277,7 @@ func (it *sstBatchKeyIterator) mergeInteger() {
 		for i := 1; !dedup && i < len(it.blocks); i++ {
 			dedup = it.blocks[i].partiallyRead() ||
 				it.blocks[i].overlapsTimeRange(it.blocks[i-1].minTime, it.blocks[i-1].maxTime) ||
-				len(it.blocks[i].tombstones) > 0
+				len(it.blocks[i].tombstones) > 0 || (codec.IsPtrBlock(it.blocks[i].b) && codec.PtrBlockCount(it.blocks[i].b) > it.separateThreshold)
 		}
 
 	}
@@ -524,7 +524,7 @@ func (it *sstBatchKeyIterator) mergeUnsigned() {
 		for i := 1; !dedup && i < len(it.blocks); i++ {
 			dedup = it.blocks[i].partiallyRead() ||
 				it.blocks[i].overlapsTimeRange(it.blocks[i-1].minTime, it.blocks[i-1].maxTime) ||
-				len(it.blocks[i].tombstones) > 0
+				len(it.blocks[i].tombstones) > 0 || (codec.IsPtrBlock(it.blocks[i].b) && codec.PtrBlockCount(it.blocks[i].b) > it.separateThreshold)
 		}
 
 	}
@@ -771,7 +771,7 @@ func (it *sstBatchKeyIterator) mergeString() {
 		for i := 1; !dedup && i < len(it.blocks); i++ {
 			dedup = it.blocks[i].partiallyRead() ||
 				it.blocks[i].overlapsTimeRange(it.blocks[i-1].minTime, it.blocks[i-1].maxTime) ||
-				len(it.blocks[i].tombstones) > 0
+				len(it.blocks[i].tombstones) > 0 || (codec.IsPtrBlock(it.blocks[i].b) && codec.PtrBlockCount(it.blocks[i].b) > it.separateThreshold)
 		}
 
 	}
@@ -1018,7 +1018,7 @@ func (it *sstBatchKeyIterator) mergeBoolean() {
 		for i := 1; !dedup && i < len(it.blocks); i++ {
 			dedup = it.blocks[i].partiallyRead() ||
 				it.blocks[i].overlapsTimeRange(it.blocks[i-1].minTime, it.blocks[i-1].maxTime) ||
-				len(it.blocks[i].tombstones) > 0
+				len(it.blocks[i].tombstones) > 0 || (codec.IsPtrBlock(it.blocks[i].b) && codec.PtrBlockCount(it.blocks[i].b) > it.separateThreshold)
 		}
 
 	}

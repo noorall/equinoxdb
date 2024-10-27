@@ -48,6 +48,13 @@ type Option struct {
 	CompactionThroughputLimiter  limiter.Rate
 	CompactFullWriteColdDuration time.Duration
 
+	SeparateDeciderEnabled bool
+	SeparateFactor         float64
+	SeparateThreshold      int
+	SeparateZetaStep       int
+	SeparateDistMu         float64
+	SeparateDistSigma      float64
+
 	ValueFileMaxSize            int
 	ValueFileMaxEntries         int
 	ValueFileOpenLimiter        limiter.Fixed
@@ -71,6 +78,13 @@ func NewOption() Option {
 		ValueFileMaxEntries:         DefaultValueFileMaxEntries,
 		ValueFileOpenLimiter:        limiter.NewFixed(runtime.GOMAXPROCS(0)),
 		ValueFileParallelismLimiter: limiter.NewFixed(runtime.GOMAXPROCS(0)),
+
+		SeparateDeciderEnabled: false,
+		SeparateFactor:         1.0,
+		SeparateThreshold:      20,
+		SeparateDistMu:         40.0,
+		SeparateDistSigma:      5.0,
+		SeparateZetaStep:       10,
 
 		Logger: zap.NewNop(),
 	}

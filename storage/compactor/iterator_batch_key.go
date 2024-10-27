@@ -88,7 +88,8 @@ type sstBatchKeyIterator struct {
 	// overflowErrors is the number of errors we have ignored.
 	overflowErrors int
 
-	vr *store.VFileRegionManager
+	vr                *store.VFileRegionManager
+	separateThreshold int
 }
 
 func (it *sstBatchKeyIterator) AppendError(err error) bool {
@@ -105,7 +106,7 @@ func (it *sstBatchKeyIterator) AppendError(err error) bool {
 
 // NewSSTBatchKeyIterator returns a new SST key iterator from readers.
 // size indicates the maximum number of values to encode in a single block.
-func NewSSTBatchKeyIterator(size int, fast bool, maxErrors int, interrupt chan struct{}, vfm *store.VFileRegionManager, sstFiles []string, readers ...*store.SSTReader) (KeyIterator, error) {
+func NewSSTBatchKeyIterator(size int, fast bool, maxErrors int, interrupt chan struct{}, vfm *store.VFileRegionManager, separateThreshold int, sstFiles []string, readers ...*store.SSTReader) (KeyIterator, error) {
 	var iter []*store.BlockIterator
 	for _, r := range readers {
 		iter = append(iter, r.BlockIterator())
@@ -128,6 +129,7 @@ func NewSSTBatchKeyIterator(size int, fast bool, maxErrors int, interrupt chan s
 		interrupt:            interrupt,
 		maxErrors:            maxErrors,
 		vr:                   vfm,
+		separateThreshold:    separateThreshold,
 	}, nil
 }
 

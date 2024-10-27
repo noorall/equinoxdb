@@ -16,6 +16,7 @@ import (
 	"bytes"
 	"equinox/pkg/limiter"
 	"equinox/storage/memory"
+	"equinox/storage/separator"
 	"equinox/storage/store"
 	"errors"
 	"fmt"
@@ -66,6 +67,11 @@ type Compactor struct {
 	lastSnapshotDuration time.Duration
 
 	snapshotLatencies *latencies
+
+	SeparateDecider   *separator.SeparateDecider
+	SeparateThreshold int
+
+	totalWritten uint64
 
 	// The channel to signal that any in progress snapshots should be aborted.
 	snapshotsInterrupt chan struct{}
@@ -183,6 +189,8 @@ func (c *Compactor) WriteSnapshot(cache *memory.Cache, logger *zap.Logger) ([]st
 	start := time.Now()
 	card := cache.Count()
 
+	c.totalWritten += uint64(card) * DefaultMaxPointsPerBlock
+
 	// Enable throttling if we have lower cardinality or snapshots are going fast.
 	throttle := card < 3e6 && c.snapshotLatencies.avg() < 15*time.Second
 
@@ -208,7 +216,7 @@ func (c *Compactor) WriteSnapshot(cache *memory.Cache, logger *zap.Logger) ([]st
 	resC := make(chan res, concurrency)
 	for i := 0; i < concurrency; i++ {
 		go func(sp *memory.ReadableCache) {
-			iter := NewCacheKeyIterator(sp, intC, c.VM)
+			iter := NewCacheKeyIterator(sp, intC, c.VM, c.SeparateDecider, int(c.totalWritten))
 			defer func(iter KeyIterator) {
 				_ = iter.Close()
 			}(iter)
@@ -300,7 +308,7 @@ func (c *Compactor) compact(fast bool, sstFiles []string, logger *zap.Logger) ([
 		return nil, nil
 	}
 
-	sst, err := NewSSTBatchKeyIterator(size, fast, DefaultMaxSavedErrors, intC, c.VM, sstFiles, trs...)
+	sst, err := NewSSTBatchKeyIterator(size, fast, DefaultMaxSavedErrors, intC, c.VM, c.SeparateThreshold, sstFiles, trs...)
 	if err != nil {
 		return nil, err
 	}

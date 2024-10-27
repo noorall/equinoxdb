@@ -21,12 +21,15 @@ package compactor
 import (
 	"equinox/storage/codec"
 	"equinox/storage/memory"
+	separator "equinox/storage/separator"
 	"equinox/storage/store"
 	"equinox/storage/types"
 	equinox "equinox/types"
 	"runtime"
 	"sync/atomic"
 )
+
+const SeparateDefaultK = 30000
 
 type cacheKeyIterator struct {
 	c     *memory.ReadableCache
@@ -46,7 +49,7 @@ type cacheBlock struct {
 	err              error
 }
 
-func NewCacheKeyIterator(c *memory.ReadableCache, interrupt chan struct{}, vfm *store.VFileRegionManager) KeyIterator {
+func NewCacheKeyIterator(c *memory.ReadableCache, interrupt chan struct{}, vfm *store.VFileRegionManager, separateDecider *separator.SeparateDecider, k int) KeyIterator {
 	nodes := c.GetAllNodes()
 	ready := make([]chan struct{}, len(nodes))
 	for i := 0; i < len(nodes); i++ {
@@ -61,7 +64,7 @@ func NewCacheKeyIterator(c *memory.ReadableCache, interrupt chan struct{}, vfm *
 		interrupt: interrupt,
 		blocks:    make([][]cacheBlock, len(nodes)),
 	}
-	go it.encode(vfm)
+	go it.encode(vfm, separateDecider, k)
 	return it
 }
 
@@ -112,7 +115,7 @@ func (it *cacheKeyIterator) Close() error {
 	return nil
 }
 
-func (it *cacheKeyIterator) encode(vfm *store.VFileRegionManager) {
+func (it *cacheKeyIterator) encode(vfm *store.VFileRegionManager, decider *separator.SeparateDecider, k int) {
 	concurrency := runtime.GOMAXPROCS(0)
 	n := len(it.ready)
 
@@ -173,12 +176,19 @@ func (it *cacheKeyIterator) encode(vfm *store.VFileRegionManager) {
 						b, err = codec.EncodeValues(values[:end], nil)
 					}
 
+					needSeparate := true
+					if k >= SeparateDefaultK && decider != nil {
+						needSeparate = decider.NeedSeparate(end, SeparateDefaultK, len(key), values[0].Size())
+					}
+
 					values = values[end:]
 
-					var vf *store.VFileManager
-					vf, err = vfm.GetOrCreateVFileManager(curNode.GetLifeCycle())
-					if err == nil {
-						b, err = vf.WriteBlock(key, minTime, maxTime, b)
+					if needSeparate {
+						var vf *store.VFileManager
+						vf, err = vfm.GetOrCreateVFileManager(curNode.GetLifeCycle())
+						if err == nil {
+							b, err = vf.WriteBlock(key, minTime, maxTime, b)
+						}
 					}
 
 					it.blocks[curIdx] = append(it.blocks[curIdx], cacheBlock{

@@ -9,6 +9,7 @@ import (
 	"equinox/storage/config"
 	"equinox/storage/cursor"
 	"equinox/storage/memory"
+	separator "equinox/storage/separator"
 	"equinox/storage/store"
 	"equinox/storage/types"
 	"errors"
@@ -42,6 +43,7 @@ type Engine struct {
 	scheduler         *scheduler
 	compactionLimiter limiter.Fixed
 	activeCompactions *compactionCounter
+	separateDecider   *separator.SeparateDecider
 
 	filestore *store.FileStore
 
@@ -70,14 +72,23 @@ func NewEngine(opt config.Option) (*Engine, error) {
 	fs.OpenLimiter = opt.OpenLimiter
 	fs.VM = vFileRegionManager
 
+	var separateDecider *separator.SeparateDecider
+
+	if opt.SeparateDeciderEnabled {
+		separateDecider = separator.NewSeparateDecider(opt.SeparateDistMu, opt.SeparateDistSigma, opt.SeparateFactor, opt.SeparateZetaStep, opt.SeparateThreshold)
+	}
+
 	c := compactor.NewCompactor()
 	c.Dir = opt.Dir
 	c.FileStore = fs
 	c.RateLimit = opt.CompactionThroughputLimiter
 	c.VM = vFileRegionManager
+	c.SeparateDecider = separateDecider
+	c.SeparateThreshold = opt.SeparateThreshold
 
 	planner := compactor.NewDefaultPlanner(fs, opt.CompactFullWriteColdDuration)
 	activeCompactions := &compactionCounter{}
+
 	e := &Engine{
 		mm:                 mm,
 		option:             opt,
@@ -90,6 +101,7 @@ func NewEngine(opt config.Option) (*Engine, error) {
 		activeCompactions:  activeCompactions,
 		scheduler:          newScheduler(activeCompactions, opt.CompactionLimiter.Capacity()),
 		vFileRegionManager: vFileRegionManager,
+		separateDecider:    separateDecider,
 	}
 
 	return e, nil
@@ -133,12 +145,21 @@ func (e *Engine) WriteBatch(points []types.Point) error {
 		keyBuf  []byte
 		baseLen int
 	)
+	now := time.Now()
+	prev := int64(-1)
 	for _, p := range points {
 		keyBuf = append(keyBuf[:0], p.Key()...)
 		keyBuf = append(keyBuf, keyFieldSeparator...)
 		baseLen = len(keyBuf)
 		iter := p.FieldIterator()
 		t := p.Time().UnixNano()
+		if e.separateDecider != nil {
+			e.separateDecider.UpdateAvgTd(float64(t - now.UnixNano()))
+			if prev != -1 {
+				e.separateDecider.UpdateAvgTg(float64(t - prev))
+			}
+		}
+		prev = t
 		for iter.Next() {
 			if bytes.Equal(iter.FieldKey(), timeBytes) {
 				continue

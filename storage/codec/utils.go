@@ -79,6 +79,11 @@ func IsPtrBlock(block []byte) bool {
 	return (blockType & BlockValuePtrMask) != 0
 }
 
+func PtrBlockCount(block []byte) int {
+	b := block[0]
+	return int(b & ^BlockValuePtrMask)
+}
+
 func BlockCount(block []byte) (int, error) {
 	if len(block) <= encodedBlockHeaderSize {
 		return 0, fmt.Errorf("count of short block: got %v, exp %v", len(block), encodedBlockHeaderSize)
