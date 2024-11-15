@@ -142,12 +142,12 @@ func (f *ValueFile) IsValidateValue(key []byte, minTime, maxTime int64) bool {
 	}
 	deletedTimes := f.cache.Get(string(key))
 	if deletedTimes != nil {
-		return IsOverlapAny(TimeRange{minTime, maxTime}, deletedTimes)
+		return !IsOverlapAny(TimeRange{minTime, maxTime}, deletedTimes)
 	}
 	validated := true
 	err := f.tombstoner.Walk(func(t Tombstone) error {
 		if bytes.Equal(key, t.Key) && t.Min <= minTime && t.Max >= maxTime {
-			validated = true
+			validated = false
 			return fmt.Errorf("find")
 		}
 		return nil

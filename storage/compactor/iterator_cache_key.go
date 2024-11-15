@@ -151,8 +151,31 @@ func (it *cacheKeyIterator) encode(vfm *store.VFileRegionManager, decider *separ
 				values := curNode.GetEntry().Values()
 
 				for len(values) > 0 {
+					switch values[0].(type) {
+					case types.PtrValue:
+						it.blocks[curIdx] = append(it.blocks[curIdx], cacheBlock{
+							k:       key,
+							minTime: values[0].Value().(types.PtrValue).MinTime,
+							maxTime: values[0].Value().(types.PtrValue).MaxTime,
+							err:     nil,
+						})
+						values = values[1:]
+					default:
+						continue
+					}
 
-					end := len(values)
+					end := 0
+					for end < len(values) {
+						switch values[end].(type) {
+						case types.PtrValue:
+							break
+						default:
+							end++
+						}
+					}
+					if end == 0 {
+						continue
+					}
 					if end > it.size {
 						end = it.size
 					}

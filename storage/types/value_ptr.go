@@ -26,10 +26,12 @@ import (
 type PtrValue struct {
 	unixNano int64
 	value    []byte
+	MinTime  int64
+	MaxTime  int64
 }
 
-func NewPtrValueValue(t int64, v []byte) Value {
-	return PtrValue{unixNano: t, value: v}
+func NewPtrValueValue(min, max int64, v []byte) Value {
+	return PtrValue{unixNano: min, MinTime: min, MaxTime: max, value: v}
 }
 
 func (v PtrValue) Size() int {

@@ -36,7 +36,6 @@ type MemTable struct {
 	buf   *bytes.Buffer
 
 	maxMemTableSize int
-	maxVersion      uint64
 	NewTable        bool
 }
 
@@ -47,7 +46,7 @@ func NewMemTable(id int, opt config.Option) (*MemTable, error) {
 	}
 
 	if err != nil {
-		return nil, errs.Errorf(err, "create a new memtable: %s", mt.wal.Fd.Name())
+		return nil, errs.Errorf(err, "error while create a new memtable")
 	}
 
 	return nil, fmt.Errorf("file %s already exists", mt.wal.Fd.Name())

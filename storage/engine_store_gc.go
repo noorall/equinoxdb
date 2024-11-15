@@ -122,7 +122,7 @@ func (e *Engine) gcValueFile(vf *store.ValueFile, lifeCycle int) {
 		if err != nil {
 			return
 		}
-		vPtr := types.NewPtrValueValue(header.MinTime, v)
+		vPtr := types.NewPtrValueValue(header.MinTime, header.MaxTime, v)
 		values[keyStr] = append(values[keyStr], vPtr)
 	}
 	err = e.mm.WriteMulti(values, e.syncWrite)

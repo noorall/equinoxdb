@@ -86,7 +86,7 @@ func (mm *MemManager) WriteMulti(values map[string][]types.Value, sync bool) err
 		return err
 	}
 	if sync {
-		return mm.mem.wal.Sync()
+		return mm.mem.SyncWAL()
 	}
 	return nil
 }

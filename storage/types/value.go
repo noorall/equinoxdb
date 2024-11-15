@@ -54,6 +54,22 @@ type Value interface {
 	String() string
 }
 
+func NewValue(t int64, value interface{}) Value {
+	switch v := value.(type) {
+	case int64:
+		return IntegerValue{unixNano: t, value: v}
+	case uint64:
+		return UnsignedValue{unixNano: t, value: v}
+	case float64:
+		return FloatValue{unixNano: t, value: v}
+	case bool:
+		return BooleanValue{unixNano: t, value: v}
+	case string:
+		return StringValue{unixNano: t, value: v}
+	}
+	return nil
+}
+
 type BooleanValue struct {
 	unixNano int64
 	value    bool
