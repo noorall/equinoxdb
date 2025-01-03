@@ -19,11 +19,12 @@
 package main
 
 import (
-	"context"
 	"equinox/storage"
 	"equinox/storage/config"
+	"equinox/storage/metric"
 	"equinox/storage/types"
 	"fmt"
+	"go.uber.org/zap"
 	"io/ioutil"
 	"strings"
 	"sync"
@@ -34,6 +35,16 @@ func getTestDB() *storage.Engine {
 	dir, _ := ioutil.TempDir("/Users/noorall/GolandProjects/equinox/benchmark/write/db", "equinox-test")
 
 	options := config.NewOption()
+	options.Dir = dir
+	db, _ := storage.NewEngine(options)
+	return db
+}
+
+func getTestDBNonSep() *storage.Engine {
+	dir, _ := ioutil.TempDir("/Users/noorall/GolandProjects/equinox/benchmark/write/db", "equinox-test")
+
+	options := config.NewOption()
+	options.SeparateEnabled = false
 	options.Dir = dir
 	db, _ := storage.NewEngine(options)
 	return db
@@ -84,10 +95,12 @@ func TestWritePoints2(e *storage.Engine, wg *sync.WaitGroup) {
 func main2() {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
+	log, _ := zap.NewProduction()
+	metric.RunMetricServer(log, 2121)
 	//wg.Add(1)
-	e := getTestDB()
-	_ = e.Open(context.Background())
-	go TestWritePoints(e, &wg)
-	//go TestWritePoints2(e, &wg)
+	//e := getTestDB()
+	//_ = e.Open(context.Background())
+	//go TestWritePoints(e, &wg)
+	////go TestWritePoints2(e, &wg)
 	wg.Wait()
 }

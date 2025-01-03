@@ -26,8 +26,8 @@ import (
 )
 
 const (
-	DefaultCompactThroughput            = 48 * 1024 * 1024
-	DefaultCompactThroughputBurst       = 48 * 1024 * 1024
+	DefaultCompactThroughput            = 128 * 1024 * 1024
+	DefaultCompactThroughputBurst       = 256 * 1024 * 1024
 	DefaultCompactFullWriteColdDuration = 4 * time.Hour
 	DefaultNumMemTables                 = 4
 	DefaultMaxMemTableSize              = 64 << 20
@@ -54,11 +54,15 @@ type Option struct {
 	SeparateZetaStep       int
 	SeparateDistMu         float64
 	SeparateDistSigma      float64
+	SeparateEnabled        bool
 
 	ValueFileMaxSize            int
 	ValueFileMaxEntries         int
 	ValueFileOpenLimiter        limiter.Fixed
 	ValueFileParallelismLimiter limiter.Fixed
+
+	EnableMetrics bool
+	MetricPort    int
 
 	Logger *zap.Logger
 }
@@ -85,6 +89,10 @@ func NewOption() Option {
 		SeparateDistMu:         40.0,
 		SeparateDistSigma:      5.0,
 		SeparateZetaStep:       10,
+		SeparateEnabled:        true,
+
+		EnableMetrics: true,
+		MetricPort:    2112,
 
 		Logger: zap.NewNop(),
 	}

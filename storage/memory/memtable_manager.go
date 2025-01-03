@@ -21,6 +21,7 @@ package memory
 import (
 	"equinox/storage/config"
 	"equinox/storage/errs"
+	"equinox/storage/metric"
 	"equinox/storage/store"
 	"equinox/storage/types"
 	"errors"
@@ -47,6 +48,8 @@ type MemManager struct {
 	flushCh chan *MemTable
 	wg      sync.WaitGroup
 
+	stats *metric.MemoryMetrics
+
 	option config.Option
 
 	logger *zap.Logger
@@ -58,6 +61,7 @@ func NewMemManager(opt config.Option, logger *zap.Logger) (*MemManager, error) {
 		flushCh: make(chan *MemTable, opt.NumMemTables),
 		option:  opt,
 		logger:  logger,
+		stats:   metric.NewCacheMetrics(metric.GetEngineLabs(opt)),
 	}
 	err := mm.restoreMemTables()
 	if err != nil {
@@ -66,13 +70,14 @@ func NewMemManager(opt config.Option, logger *zap.Logger) (*MemManager, error) {
 	if mm.mem, err = mm.newMemTable(); err != nil {
 		return nil, errs.Errorf(err, "cannot create empty memtable")
 	}
+	mm.stats.LastSnapshot.SetToCurrentTime()
 	return mm, nil
 }
 
 func (mm *MemManager) Close() {
+	mm.wg.Wait()
 	mm.Lock()
 	defer mm.Unlock()
-	mm.wg.Wait()
 	_ = mm.mem.wal.CloseWithTruncate(int64(mm.mem.wal.Pos))
 	close(mm.flushCh)
 }
@@ -80,11 +85,13 @@ func (mm *MemManager) Close() {
 func (mm *MemManager) WriteMulti(values map[string][]types.Value, sync bool) error {
 	mm.Lock()
 	defer mm.Unlock()
-
+	mm.stats.Writes.Inc()
 	err := mm.mem.WriteMulti(values)
 	if err != nil {
+		mm.stats.WriteErr.Inc()
 		return err
 	}
+	mm.stats.MemBytes.Set(float64(mm.mem.Cache.Size()))
 	if sync {
 		return mm.mem.SyncWAL()
 	}
@@ -98,6 +105,7 @@ func (mm *MemManager) DeleteRange(keys [][]byte, min, max int64) {
 	for _, m := range mm.imm {
 		m.DeleteRange(keys, min, max)
 	}
+	mm.stats.MemBytes.Set(float64(mm.mem.Cache.Size()))
 }
 
 func (mm *MemManager) Values(key []byte) types.Values {
@@ -175,6 +183,7 @@ func (mm *MemManager) OnMemTableFlushed(mt *MemTable) {
 	mm.imm = mm.imm[1:]
 	mm.wg.Done()
 	mt.DecrRef()
+	mm.stats.LastSnapshot.SetToCurrentTime()
 }
 
 func (mm *MemManager) newMemTable() (*MemTable, error) {
@@ -182,7 +191,7 @@ func (mm *MemManager) newMemTable() (*MemTable, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	mm.stats.MemBytes.Set(float64(mem.Cache.Size()))
 	mm.nextMemFid++
 	return mem, nil
 }

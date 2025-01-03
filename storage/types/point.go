@@ -100,6 +100,8 @@ type FieldIterator interface {
 
 	UnsignedValue() (uint64, error)
 
+	Size() int
+
 	Reset()
 }
 
@@ -194,6 +196,10 @@ func (p *point) Next() bool {
 
 func (p *point) Type() FieldType {
 	return p.it.fieldType
+}
+
+func (p *point) Size() int {
+	return len(p.key) + len(p.it.key) + len(p.it.valueBuf)
 }
 
 func (p *point) FieldKey() []byte {

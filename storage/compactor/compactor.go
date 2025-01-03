@@ -16,6 +16,7 @@ import (
 	"bytes"
 	"equinox/pkg/limiter"
 	"equinox/storage/memory"
+	"equinox/storage/metric"
 	"equinox/storage/separator"
 	"equinox/storage/store"
 	"errors"
@@ -68,6 +69,7 @@ type Compactor struct {
 
 	snapshotLatencies *latencies
 
+	SeparateEnabled   bool
 	SeparateDecider   *separator.SeparateDecider
 	SeparateThreshold int
 
@@ -81,6 +83,8 @@ type Compactor struct {
 	files map[string]struct{}
 
 	VM *store.VFileRegionManager
+
+	Stats *metric.CompactionMetrics
 }
 
 // NewCompactor returns a new instance of Compactor.
@@ -216,7 +220,7 @@ func (c *Compactor) WriteSnapshot(cache *memory.Cache, logger *zap.Logger) ([]st
 	resC := make(chan res, concurrency)
 	for i := 0; i < concurrency; i++ {
 		go func(sp *memory.ReadableCache) {
-			iter := NewCacheKeyIterator(sp, intC, c.VM, c.SeparateDecider, int(c.totalWritten))
+			iter := NewCacheKeyIterator(sp, intC, c.VM, c.SeparateDecider, int(c.totalWritten), c.SeparateEnabled)
 			defer func(iter KeyIterator) {
 				_ = iter.Close()
 			}(iter)

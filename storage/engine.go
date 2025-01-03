@@ -9,11 +9,13 @@ import (
 	"equinox/storage/config"
 	"equinox/storage/cursor"
 	"equinox/storage/memory"
+	"equinox/storage/metric"
 	separator "equinox/storage/separator"
 	"equinox/storage/store"
 	"equinox/storage/types"
 	"errors"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"math"
 	"sync"
@@ -50,16 +52,19 @@ type Engine struct {
 	vFileRegionManager *store.VFileRegionManager
 	vFileGcDone        chan struct{}
 	vFileGcWG          *sync.WaitGroup
+	syncWrite          bool
 
-	syncWrite bool
+	compactionStats *metric.CompactionMetrics
+	engineStats     *metric.EngineMetrics
 
 	option config.Option
-
 	logger *zap.Logger
 }
 
 func NewEngine(opt config.Option) (*Engine, error) {
+	labs := metric.GetEngineLabs(opt)
 	logger, _ := zap.NewProduction()
+	logger = logger.With(zap.String("engine", "equinox"))
 	mm, err := memory.NewMemManager(opt, logger)
 	if err != nil {
 		return nil, err
@@ -71,6 +76,7 @@ func NewEngine(opt config.Option) (*Engine, error) {
 	fs := store.NewFileStore(opt.Dir)
 	fs.OpenLimiter = opt.OpenLimiter
 	fs.VM = vFileRegionManager
+	fs.Metric = metric.NewFileStoreMetrics(labs)
 
 	var separateDecider *separator.SeparateDecider
 
@@ -85,6 +91,8 @@ func NewEngine(opt config.Option) (*Engine, error) {
 	c.VM = vFileRegionManager
 	c.SeparateDecider = separateDecider
 	c.SeparateThreshold = opt.SeparateThreshold
+	c.SeparateEnabled = opt.SeparateEnabled
+	c.Stats = metric.NewCompactionMetrics(labs)
 
 	planner := compactor.NewDefaultPlanner(fs, opt.CompactFullWriteColdDuration)
 	activeCompactions := &compactionCounter{}
@@ -102,34 +110,52 @@ func NewEngine(opt config.Option) (*Engine, error) {
 		scheduler:          newScheduler(activeCompactions, opt.CompactionLimiter.Capacity()),
 		vFileRegionManager: vFileRegionManager,
 		separateDecider:    separateDecider,
+		compactionStats:    c.Stats,
+		engineStats:        metric.NewEngineMetrics(labs),
 	}
 
 	return e, nil
 }
 func (e *Engine) Open(ctx context.Context) error {
+	e.logger.Info("starting create filestore")
 	if err := e.filestore.Open(ctx); err != nil {
 		return err
 	}
+	e.logger.Info("starting create value file manager")
 	err := e.vFileRegionManager.RegisterRegion(models.Default)
 	if err != nil {
 		return err
 	}
+	e.logger.Info("starting compaction worker")
 	e.compactor.Open()
 	e.SetCompactionsEnabled(true)
+	e.logger.Info("starting value file gc worker")
+	e.enableValueFileGc()
+	if e.option.EnableMetrics {
+		metric.RunMetricServer(e.logger, e.option.MetricPort)
+	}
 	return nil
 }
 
 func (e *Engine) Close() error {
+	e.logger.Info("starting close memory manager")
 	e.mm.Close()
 
+	e.logger.Info("starting close compaction worker")
 	e.SetCompactionsEnabled(false)
+
+	e.logger.Info("starting close value file gc worker")
+	e.disableValueFileGc()
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.compactionDone = nil
+	e.vFileGcDone = nil
 
+	e.logger.Info("starting close filestore")
 	err := e.filestore.Close()
 
+	e.logger.Info("starting value file region manager")
 	err = e.vFileRegionManager.Close()
 
 	return err
@@ -140,12 +166,13 @@ func (e *Engine) Write(point types.Point) error {
 }
 
 func (e *Engine) WriteBatch(points []types.Point) error {
+	start := time.Now()
 	values := make(map[string][]types.Value, len(points))
 	var (
 		keyBuf  []byte
 		baseLen int
 	)
-	now := time.Now()
+	size := 0
 	prev := int64(-1)
 	for _, p := range points {
 		keyBuf = append(keyBuf[:0], p.Key()...)
@@ -154,7 +181,7 @@ func (e *Engine) WriteBatch(points []types.Point) error {
 		iter := p.FieldIterator()
 		t := p.Time().UnixNano()
 		if e.separateDecider != nil {
-			e.separateDecider.UpdateAvgTd(float64(t - now.UnixNano()))
+			e.separateDecider.UpdateAvgTd(float64(t - start.UnixNano()))
 			if prev != -1 {
 				e.separateDecider.UpdateAvgTg(float64(t - prev))
 			}
@@ -198,9 +225,12 @@ func (e *Engine) WriteBatch(points []types.Point) error {
 			default:
 				return fmt.Errorf("unknown field type for %s: %s", string(iter.FieldKey()), p.String())
 			}
+			size = size + v.Size() + len(keyBuf)
 			values[string(keyBuf)] = append(values[string(keyBuf)], v)
 		}
 	}
+	e.engineStats.WrittenDelay.With(prometheus.Labels{"type": "process"}).Observe(float64(time.Since(start).Milliseconds()))
+	t2 := time.Now()
 
 	var err error
 	i := 0
@@ -213,7 +243,18 @@ func (e *Engine) WriteBatch(points []types.Point) error {
 
 		time.Sleep(10 * time.Millisecond)
 	}
-	return e.mm.WriteMulti(values, e.syncWrite)
+	e.engineStats.WrittenDelay.With(prometheus.Labels{"type": "waiting"}).Observe(float64(time.Since(t2).Milliseconds()))
+	t2 = time.Now()
+
+	err = e.mm.WriteMulti(values, e.syncWrite)
+
+	e.engineStats.WrittenDelay.With(prometheus.Labels{"type": "writing"}).Observe(float64(time.Since(t2).Milliseconds()))
+
+	e.engineStats.WrittenDelay.With(prometheus.Labels{"type": "total"}).Observe(float64(time.Since(start).Milliseconds()))
+
+	val := float64(size) / float64(1024) / float64(1024) / time.Since(start).Seconds()
+	e.engineStats.WrittenOutput.Set(val)
+	return err
 }
 
 func (e *Engine) Delete(key []byte) error {

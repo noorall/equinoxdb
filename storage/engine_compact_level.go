@@ -20,6 +20,8 @@ package storage
 
 import (
 	"equinox/storage/compactor"
+	"equinox/storage/metric"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"sync"
 	"sync/atomic"
@@ -127,15 +129,25 @@ func (e *Engine) compact(wg *sync.WaitGroup) {
 		case <-t.C:
 
 			// Find our compaction plans
-			level1Groups, _ := e.compactionPlan.PlanLevel(1)
-			level2Groups, _ := e.compactionPlan.PlanLevel(2)
-			level3Groups, _ := e.compactionPlan.PlanLevel(3)
-			level4Groups, _ := e.compactionPlan.Plan(e.LastModified())
+			level1Groups, len1 := e.compactionPlan.PlanLevel(1)
+			level2Groups, len2 := e.compactionPlan.PlanLevel(2)
+			level3Groups, len3 := e.compactionPlan.PlanLevel(3)
+			level4Groups, len4 := e.compactionPlan.Plan(e.LastModified())
+
+			e.compactionStats.Queued.With(prometheus.Labels{metric.LevelKey: metric.LevelFull}).Set(float64(len4))
 
 			// If no full compactions are need, see if an optimize is needed
 			if len(level4Groups) == 0 {
-				level4Groups, _ = e.compactionPlan.PlanOptimize()
+				level4Groups, len4 = e.compactionPlan.PlanOptimize()
+				e.compactionStats.Queued.With(prometheus.Labels{metric.LevelKey: metric.LevelOpt}).Set(float64(len4))
 			}
+
+			// Update the level plan queue stats
+			// For stats, use the length needed, even if the lock was
+			// not acquired
+			e.compactionStats.Queued.With(prometheus.Labels{metric.LevelKey: metric.Level1}).Set(float64(len1))
+			e.compactionStats.Queued.With(prometheus.Labels{metric.LevelKey: metric.Level2}).Set(float64(len2))
+			e.compactionStats.Queued.With(prometheus.Labels{metric.LevelKey: metric.Level3}).Set(float64(len3))
 
 			// Set the queue depths on the scheduler
 			// Use the real queue depth, dependent on acquiring
@@ -186,14 +198,16 @@ func (e *Engine) compactLevel(grp compactor.CompactionGroup, level int, fast boo
 
 	if e.compactionLimiter.TryTake() {
 		{
-			atomic.AddInt64(e.activeCompactions.countForLevel(level), 1)
+			val := atomic.AddInt64(e.activeCompactions.countForLevel(level), 1)
+			e.compactionStats.Active.With(metric.LabelForLevel(level)).Set(float64(val))
 		}
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			defer func() {
-				atomic.AddInt64(e.activeCompactions.countForLevel(level), -1)
+				val := atomic.AddInt64(e.activeCompactions.countForLevel(level), -1)
+				e.compactionStats.Active.With(metric.LabelForLevel(level)).Set(float64(val))
 			}()
 
 			defer e.compactionLimiter.Release()
@@ -219,13 +233,15 @@ func (e *Engine) compactFull(grp compactor.CompactionGroup, wg *sync.WaitGroup) 
 	// Try the lo priority limiter, otherwise steal a little from the high priority if we can.
 	if e.compactionLimiter.TryTake() {
 		{
-			atomic.AddInt64(&e.activeCompactions.full, 1)
+			val := atomic.AddInt64(&e.activeCompactions.full, 1)
+			e.compactionStats.Active.With(prometheus.Labels{metric.LevelKey: metric.LevelFull}).Set(float64(val))
 		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			defer func() {
-				atomic.AddInt64(&e.activeCompactions.full, -1)
+				val := atomic.AddInt64(&e.activeCompactions.full, -1)
+				e.compactionStats.Active.With(prometheus.Labels{metric.LevelKey: metric.LevelFull}).Set(float64(val))
 			}()
 			defer e.compactionLimiter.Release()
 			s.Apply()
@@ -240,14 +256,17 @@ func (e *Engine) compactFull(grp compactor.CompactionGroup, wg *sync.WaitGroup) 
 // levelCompactionStrategy returns a compactionStrategy for the given level.
 // It returns nil if there are no SST files to compact.
 func (e *Engine) levelCompactionStrategy(group compactor.CompactionGroup, fast bool, level int) *compactionStrategy {
+	label := metric.LabelForLevel(level)
 	return &compactionStrategy{
-		group:     group,
-		logger:    e.logger.With(zap.Int("sst1_level", level), zap.String("sst1_strategy", "level")),
-		fileStore: e.filestore,
-		compactor: e.compactor,
-		fast:      fast,
-		engine:    e,
-		level:     level,
+		group:               group,
+		logger:              e.logger.With(zap.Int("sst1_level", level), zap.String("sst1_strategy", "level")),
+		fileStore:           e.filestore,
+		compactor:           e.compactor,
+		fast:                fast,
+		engine:              e,
+		level:               level,
+		errorStat:           e.compactionStats.Failed.With(label),
+		durationSecondsStat: e.compactionStats.Duration.With(label),
 	}
 }
 
@@ -263,5 +282,11 @@ func (e *Engine) fullCompactionStrategy(group compactor.CompactionGroup, optimiz
 		engine:    e,
 		level:     4,
 	}
+	plabel := prometheus.Labels{metric.LevelKey: metric.LevelFull}
+	if optimize {
+		plabel = prometheus.Labels{metric.LevelKey: metric.LevelOpt}
+	}
+	s.errorStat = e.compactionStats.Failed.With(plabel)
+	s.durationSecondsStat = e.compactionStats.Duration.With(plabel)
 	return s
 }

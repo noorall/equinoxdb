@@ -1,7 +1,10 @@
 package storage
 
 import (
+	"equinox/storage/compactor"
 	"equinox/storage/memory"
+	"equinox/storage/metric"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"os"
 	"sync"
@@ -87,6 +90,7 @@ func (e *Engine) compactMemTable() {
 }
 
 func (e *Engine) doCompactMemTable(mt *memory.MemTable) {
+	started := time.Now()
 	for {
 		e.mu.RLock()
 		quit := e.snapDone
@@ -105,6 +109,10 @@ func (e *Engine) doCompactMemTable(mt *memory.MemTable) {
 			err = e.filestore.Replace(nil, newFiles)
 			e.mu.Unlock()
 			if err != nil {
+				if err == compactor.ErrCompactionsDisabled {
+					return
+				}
+				e.compactionStats.Failed.With(prometheus.Labels{metric.LevelKey: metric.LevelCache}).Inc()
 				e.logger.Warn("Error adding new files. Removing temp files.", zap.Error(err))
 				// Remove the new snapshot files. We will try again.
 				for _, file := range newFiles {
@@ -115,6 +123,11 @@ func (e *Engine) doCompactMemTable(mt *memory.MemTable) {
 				}
 			} else {
 				e.mm.OnMemTableFlushed(mt)
+				elapsed := time.Since(started)
+				e.compactionStats.Duration.With(prometheus.Labels{metric.LevelKey: metric.LevelCache}).Observe(elapsed.Seconds())
+				if err == nil {
+					e.logger.Info("Cache for path written", zap.String("path", e.option.Dir), zap.Duration("duration", elapsed))
+				}
 				return
 			}
 		}

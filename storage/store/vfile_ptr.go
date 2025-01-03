@@ -67,15 +67,6 @@ func (v *ValuePtr) UnmarshalBinary(b []byte) error {
 	return nil
 }
 
-func EncodeValuePtrs(ptrs []ValuePtr) ([]byte, error) {
-	buf := make([]byte, len(ptrs)*ValuePtrSize)
-
-	for i, ptr := range ptrs {
-		ptr.AppendTo(buf[ValuePtrSize*i : ValuePtrSize*(i+1)-1])
-	}
-	return buf, nil
-}
-
 func DecodeValuePtrs(b []byte) ([]*ValuePtr, error) {
 	if len(b) < ValuePtrSize {
 		return nil, fmt.Errorf("unmarshalBinary: short buf: %v < %v", len(b), ValuePtrSize)
@@ -84,7 +75,7 @@ func DecodeValuePtrs(b []byte) ([]*ValuePtr, error) {
 	ptrs := make([]*ValuePtr, count)
 	for i := 0; i < count; i++ {
 		v := &ValuePtr{}
-		_ = v.UnmarshalBinary(b[i*ValuePtrSize : i*ValuePtrSize-1])
+		_ = v.UnmarshalBinary(b[i*ValuePtrSize : (i+1)*ValuePtrSize])
 		ptrs[i] = v
 	}
 	return ptrs, nil

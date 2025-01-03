@@ -22,6 +22,7 @@ import (
 	"equinox/storage/codec"
 	"equinox/storage/config"
 	"equinox/storage/errs"
+	"equinox/storage/metric"
 	"fmt"
 	"go.uber.org/zap"
 	"hash/crc32"
@@ -58,12 +59,13 @@ type VFileManager struct {
 	discard   *discard
 	lifeCycle int
 
+	stats  *metric.ValueFileMetrics
 	logger *zap.Logger
 
 	fileWrite sync.RWMutex
 }
 
-func NewVFileManager(option config.Option, lifeCycle int) (*VFileManager, error) {
+func NewVFileManager(option config.Option, lifeCycle int, stats *metric.ValueFileMetrics) (*VFileManager, error) {
 	valueFileDir := filepath.Join(option.Dir, strconv.Itoa(lifeCycle))
 	if err := os.MkdirAll(valueFileDir, 0777); err != nil {
 		return nil, err
@@ -75,6 +77,7 @@ func NewVFileManager(option config.Option, lifeCycle int) (*VFileManager, error)
 		logger:              option.Logger,
 		garbageCh:           make(chan struct{}, 1),
 		lifeCycle:           lifeCycle,
+		stats:               stats,
 	}
 
 	if err := v.loadFiles(); err != nil {
@@ -120,13 +123,14 @@ func NewVFileManager(option config.Option, lifeCycle int) (*VFileManager, error)
 		}
 
 	}
-
+	v.stats.AddFiles(int64(len(fids)))
 	last, ok := v.filesMap[v.maxFid]
 	if !ok {
 		return nil, fmt.Errorf("failed to get lastest fmap")
 	}
 
 	offset := last.size
+	v.stats.AddSize(int64(last.size))
 
 	// the last value file is not empty, truncate it and create a new one.
 	if offset > 0 {
@@ -166,6 +170,7 @@ func (v *VFileManager) WriteBlock(key []byte, minTime, maxTime int64, block []by
 	}
 
 	atomic.AddUint32(&v.writableLogOffset, uint32(len(key)+4+len(block)+VFileHeaderSize))
+	v.stats.AddTotalWritten(int64(uint32(len(key) + 4 + len(block) + VFileHeaderSize)))
 
 	buf := make([]byte, ValuePtrSize+1)
 	buf[0] = codec.WithPtrFlag(block[0])
@@ -174,8 +179,8 @@ func (v *VFileManager) WriteBlock(key []byte, minTime, maxTime int64, block []by
 	p.MinTime = minTime
 	p.MaxTime = maxTime
 	p.FileNo = curValueFile.fid
-	p.Offset = int64(end - uint32(len(block)) - crc32.Size)
-	p.Size = uint32(len(block)) + crc32.Size
+	p.Offset = int64(end - uint32(len(block)))
+	p.Size = uint32(len(block))
 	v.numEntriesWritten++
 	p.AppendTo(buf[1:])
 	return buf, nil
@@ -198,6 +203,7 @@ func (v *VFileManager) MarkAsDelete(key []byte, vp *ValuePtr) error {
 		return err
 	}
 	defer vf.lock.RUnlock()
+	v.discard.Update(vf.fid, uint64(int(vp.Size)+len(key)+crc32.Size+VFileHeaderSize))
 	return vf.MarkAsDelete(key, vp.MinTime, vp.MaxTime, false)
 }
 
@@ -324,7 +330,11 @@ func (v *VFileManager) deleteValueFile(vf *ValueFile) error {
 	vf.lock.Lock()
 	defer vf.lock.Unlock()
 
-	return vf.Delete()
+	err := vf.Delete()
+	if err == nil {
+		v.stats.DecFiles()
+	}
+	return err
 }
 
 func (v *VFileManager) loadFiles() error {
@@ -445,65 +455,6 @@ func (v *VFileManager) updateDiscard(stats map[uint32]uint64) {
 	for fid, count := range stats {
 		v.discard.Update(fid, count)
 	}
-}
-
-func (v *VFileManager) iteratorCount() int {
-	return int(atomic.LoadInt32(&v.numActiveIterators))
-}
-
-func (v *VFileManager) incrIteratorCount() {
-	atomic.AddInt32(&v.numActiveIterators, 1)
-}
-
-func (v *VFileManager) decrIteratorCount() error {
-	num := atomic.AddInt32(&v.numActiveIterators, -1)
-	if num != 0 {
-		return nil
-	}
-
-	v.filesLock.Lock()
-	vfs := make([]*ValueFile, 0, len(v.filesToBeDeleted))
-	for _, id := range v.filesToBeDeleted {
-		vfs = append(vfs, v.filesMap[id])
-		delete(v.filesMap, id)
-	}
-	v.filesToBeDeleted = nil
-	v.filesLock.Unlock()
-
-	for _, vf := range vfs {
-		if err := v.deleteValueFile(vf); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (v *VFileManager) dropAll() (int, error) {
-	var count int
-	deleteAll := func() error {
-		v.filesLock.Lock()
-		defer v.filesLock.Unlock()
-		for _, vf := range v.filesMap {
-			if err := v.deleteValueFile(vf); err != nil {
-				return err
-			}
-			count++
-		}
-
-		v.filesMap = make(map[uint32]*ValueFile)
-		v.maxFid = 0
-		return nil
-	}
-	if err := deleteAll(); err != nil {
-		return count, err
-	}
-
-	if _, err := v.createValueFile(); err != nil {
-		return count, err
-	}
-
-	return count, nil
 }
 
 func valueFilePath(dir string, fid uint32) string {

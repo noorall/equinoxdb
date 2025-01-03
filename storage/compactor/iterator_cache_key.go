@@ -49,7 +49,7 @@ type cacheBlock struct {
 	err              error
 }
 
-func NewCacheKeyIterator(c *memory.ReadableCache, interrupt chan struct{}, vfm *store.VFileRegionManager, separateDecider *separator.SeparateDecider, k int) KeyIterator {
+func NewCacheKeyIterator(c *memory.ReadableCache, interrupt chan struct{}, vfm *store.VFileRegionManager, separateDecider *separator.SeparateDecider, k int, separateEnabled bool) KeyIterator {
 	nodes := c.GetAllNodes()
 	ready := make([]chan struct{}, len(nodes))
 	for i := 0; i < len(nodes); i++ {
@@ -64,7 +64,7 @@ func NewCacheKeyIterator(c *memory.ReadableCache, interrupt chan struct{}, vfm *
 		interrupt: interrupt,
 		blocks:    make([][]cacheBlock, len(nodes)),
 	}
-	go it.encode(vfm, separateDecider, k)
+	go it.encode(vfm, separateDecider, k, separateEnabled)
 	return it
 }
 
@@ -115,7 +115,7 @@ func (it *cacheKeyIterator) Close() error {
 	return nil
 }
 
-func (it *cacheKeyIterator) encode(vfm *store.VFileRegionManager, decider *separator.SeparateDecider, k int) {
+func (it *cacheKeyIterator) encode(vfm *store.VFileRegionManager, decider *separator.SeparateDecider, k int, separateEnabled bool) {
 	concurrency := runtime.GOMAXPROCS(0)
 	n := len(it.ready)
 
@@ -160,7 +160,6 @@ func (it *cacheKeyIterator) encode(vfm *store.VFileRegionManager, decider *separ
 							err:     nil,
 						})
 						values = values[1:]
-					default:
 						continue
 					}
 
@@ -199,8 +198,8 @@ func (it *cacheKeyIterator) encode(vfm *store.VFileRegionManager, decider *separ
 						b, err = codec.EncodeValues(values[:end], nil)
 					}
 
-					needSeparate := true
-					if k >= SeparateDefaultK && decider != nil {
+					needSeparate := separateEnabled
+					if needSeparate && k >= SeparateDefaultK && decider != nil {
 						needSeparate = decider.NeedSeparate(end, SeparateDefaultK, len(key), values[0].Size())
 					}
 

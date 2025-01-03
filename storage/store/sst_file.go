@@ -24,6 +24,7 @@ import (
 	"equinox/pkg/file"
 	"equinox/pkg/limiter"
 	"equinox/storage/codec"
+	"equinox/storage/metric"
 	"equinox/storage/types"
 	"errors"
 	"fmt"
@@ -206,6 +207,8 @@ type FileStore struct {
 	traceLogging bool
 
 	purger *purger
+
+	Metric *metric.FileStoreMetrics
 
 	currentTempDirID int
 
@@ -579,6 +582,11 @@ func (f *FileStore) Open(ctx context.Context) error {
 			continue
 		}
 		f.files = append(f.files, res.r)
+		// Accumulate file store size stats
+		f.Metric.AddSize(int64(res.r.Size()))
+		if ts := res.r.TombstoneStats(); ts.TombstoneExists {
+			f.Metric.AddSize(int64(ts.Size))
+		}
 
 		// Re-initialize the lastModified time for the file store
 		if res.r.LastModified() > lm {
@@ -599,6 +607,7 @@ func (f *FileStore) Open(ctx context.Context) error {
 	close(readerC)
 
 	sort.Sort(sstReaders(f.files))
+	f.Metric.SetFiles(int64(len(f.files)))
 	return nil
 }
 
@@ -611,18 +620,17 @@ func (f *FileStore) Close() error {
 
 	f.lastFileStats = nil
 	f.files = nil
+	f.Metric.SetFiles(0)
 
 	// Let other methods access this closed object while we do the actual closing.
 	f.mu.Unlock()
 
-	for _, file := range files {
-		err := file.Close()
-		if err != nil {
-			return err
-		}
+	var errSlice []error
+	for _, tsmFile := range files {
+		errSlice = append(errSlice, tsmFile.Close())
 	}
 
-	return nil
+	return errors.Join(errSlice...)
 }
 
 // Read returns the slice of values for the given key and the given timestamp,
@@ -771,6 +779,7 @@ func (f *FileStore) replace(oldFiles, newFiles []string, updatedFn func(r []SSTF
 		}
 
 		updated = append(updated, sst)
+		f.Metric.AddTotalWritten(int64(sst.Size()))
 	}
 
 	if updatedFn != nil {
@@ -783,7 +792,7 @@ func (f *FileStore) replace(oldFiles, newFiles []string, updatedFn func(r []SSTF
 	// Copy the current set of active files while we rename
 	// and load the new files.  We copy the pointers here to minimize
 	// the time that locks are held as well as to ensure that the replacement
-	// is atomic.©
+	// is atomic.
 
 	updated = append(updated, f.files...)
 
@@ -866,6 +875,7 @@ func (f *FileStore) replace(oldFiles, newFiles []string, updatedFn func(r []SSTF
 	f.files = active
 	sort.Sort(sstReaders(f.files))
 
+	f.Metric.SetFiles(int64(len(f.files)))
 	// Recalculate the disk size stat
 	var totalSize int64
 	for _, file := range f.files {
@@ -874,6 +884,7 @@ func (f *FileStore) replace(oldFiles, newFiles []string, updatedFn func(r []SSTF
 			totalSize += int64(ts.Size)
 		}
 	}
+	f.Metric.SetSize(totalSize)
 
 	return nil
 }

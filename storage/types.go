@@ -22,6 +22,7 @@ import (
 	"equinox/storage/compactor"
 	"equinox/storage/store"
 	"errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"os"
 	"sync/atomic"
@@ -34,6 +35,9 @@ type compactionStrategy struct {
 	fast  bool
 	level int
 
+	durationSecondsStat prometheus.Observer
+	errorStat           prometheus.Counter
+
 	logger    *zap.Logger
 	compactor *compactor.Compactor
 	fileStore *store.FileStore
@@ -43,7 +47,9 @@ type compactionStrategy struct {
 
 // Apply concurrently compacts all the groups in a compaction strategy.
 func (s *compactionStrategy) Apply() {
+	start := time.Now()
 	s.compactGroup()
+	s.durationSecondsStat.Observe(time.Since(start).Seconds())
 }
 
 // compactGroup executes the compaction strategy against a single CompactionGroup.
@@ -89,12 +95,14 @@ func (s *compactionStrategy) compactGroup() {
 				s.logger.Info("Error renaming corrupt SST file", zap.Error((err)))
 			}
 		}
+		s.errorStat.Inc()
 		time.Sleep(time.Second)
 		return
 	}
 
 	if err := s.fileStore.ReplaceWithCallback(group, files, nil); err != nil {
 		s.logger.Info("Error replacing new SST files", zap.Error(err))
+		s.errorStat.Inc()
 		time.Sleep(time.Second)
 
 		// Remove the new snapshot files. We will try again.

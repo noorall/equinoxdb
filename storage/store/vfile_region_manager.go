@@ -22,6 +22,7 @@ import (
 	"context"
 	"equinox/storage/codec"
 	"equinox/storage/config"
+	"equinox/storage/metric"
 	"equinox/storage/types"
 	"fmt"
 	"sync"
@@ -33,12 +34,15 @@ type VFileRegionManager struct {
 	option config.Option
 
 	mu sync.Mutex
+
+	stats *metric.ValueFileMetrics
 }
 
 func NewVFileRegionManager(option config.Option) *VFileRegionManager {
 	return &VFileRegionManager{
 		vFileManagers: make(map[int]*VFileManager),
 		option:        option,
+		stats:         metric.NewValueFileMetrics(metric.GetEngineLabs(option)),
 	}
 }
 
@@ -53,7 +57,7 @@ func (r *VFileRegionManager) RegisterRegion(lifeCycle int) error {
 	if _, ok := r.vFileManagers[lifeCycle]; ok {
 		return nil
 	}
-	vm, err := NewVFileManager(r.option, lifeCycle)
+	vm, err := NewVFileManager(r.option, lifeCycle, r.stats)
 	if err != nil {
 		return err
 	}
@@ -95,7 +99,7 @@ func (r *VFileRegionManager) GetOrCreateVFileManager(lifeCycle int) (*VFileManag
 
 func (r *VFileRegionManager) ReadDataBlocks(block []byte, markAsDelete bool, key []byte) ([][]byte, error) {
 	if codec.IsPtrBlock(block) {
-		vPtrs, err := DecodeValuePtrs(block)
+		vPtrs, err := DecodeValuePtrs(block[1:])
 		if err != nil {
 			return nil, err
 		}

@@ -874,7 +874,6 @@ func (it *sstBatchKeyIterator) combineString(dedup bool) blocks {
 		if it.blocks[i].read() {
 			continue
 		}
-
 		// if this block is not a ptr block
 		if !codec.IsPtrBlock(it.blocks[i].b) {
 			// if this block is already full, just add it as is
