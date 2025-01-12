@@ -10,12 +10,12 @@ const engineSubsystem = "engine"
 
 type globalEngineMetrics struct {
 	writtenDelay  *prometheus.HistogramVec
-	writtenOutput *prometheus.GaugeVec
+	writtenOutput *prometheus.CounterVec
 }
 
 type EngineMetrics struct {
 	WrittenDelay  prometheus.ObserverVec
-	WrittenOutput prometheus.Gauge
+	WrittenOutput prometheus.Counter
 }
 
 func NewEngineMetrics(labels prometheus.Labels) *EngineMetrics {
@@ -40,8 +40,8 @@ func newGlobalEngineMetrics() *globalEngineMetrics {
 				Help:      "Histogram of write write_delay_ms in ms",
 				Buckets:   []float64{50, 100, 500},
 			}, name),
-		writtenOutput: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
+		writtenOutput: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
 				Namespace: "equinox",
 				Subsystem: engineSubsystem,
 				Name:      "write_output",

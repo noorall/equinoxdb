@@ -69,7 +69,7 @@ func (e *Engine) disableSnapshotCompactions() {
 }
 
 func (e *Engine) compactMemTable() {
-	t := time.NewTicker(time.Second)
+	t := time.NewTicker(100 * time.Millisecond)
 	defer t.Stop()
 
 	for {
@@ -79,7 +79,7 @@ func (e *Engine) compactMemTable() {
 		select {
 		case <-quit:
 			return
-		case <-t.C:
+		default:
 			mt := e.mm.TakeFlushMemTable()
 			if mt == nil {
 				return

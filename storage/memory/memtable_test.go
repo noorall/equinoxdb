@@ -44,7 +44,7 @@ func TestPutRecordsAndRestore(t *testing.T) {
 	value := "h"
 	values["test"] = append(values["test"], types.NewStringValue(tt, value))
 
-	err = mt.WriteMulti(values)
+	err = mt.WriteMulti(values, nil)
 	require.Nil(t, err)
 
 	mt.SyncWAL()

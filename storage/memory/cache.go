@@ -80,18 +80,19 @@ func (n *Node) setNexNode(height int, old *Node, new *Node) bool {
 	return atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&n.tower[height])), unsafe.Pointer(old), unsafe.Pointer(new))
 }
 
-func newNode(key []byte, value types.Values, height int) *Node {
+func newNode(key []byte, value types.Values, height int, lifecycle int) *Node {
 	entry, _ := types.NewEntryValues(value)
 	return &Node{
-		height: uint16(height),
-		key:    key,
-		entry:  entry,
+		height:    uint16(height),
+		key:       key,
+		entry:     entry,
+		lifeCycle: lifecycle,
 	}
 }
 
 func NewCache() *Cache {
 
-	head := newNode(nil, nil, maxHeight)
+	head := newNode(nil, nil, maxHeight, 0)
 
 	return &Cache{head: head,
 		height:     1,
@@ -100,7 +101,7 @@ func NewCache() *Cache {
 	}
 }
 
-func (c *Cache) Put(key []byte, values types.Values) error {
+func (c *Cache) Put(key []byte, values types.Values, lifecycle int) error {
 	c.size.Add(uint32(len(key) + values.Size()))
 
 	oldHeight := c.getHeight()
@@ -130,7 +131,7 @@ func (c *Cache) Put(key []byte, values types.Values) error {
 		oldHeight = c.getHeight()
 	}
 
-	x := newNode(key, values, int(height))
+	x := newNode(key, values, int(height), lifecycle)
 
 	for i := 0; i < int(height); i++ {
 		// CAS

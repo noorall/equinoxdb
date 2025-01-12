@@ -168,6 +168,7 @@ func (e *Engine) Write(point types.Point) error {
 func (e *Engine) WriteBatch(points []types.Point) error {
 	start := time.Now()
 	values := make(map[string][]types.Value, len(points))
+	lifecycles := make(map[string]int)
 	var (
 		keyBuf  []byte
 		baseLen int
@@ -227,6 +228,7 @@ func (e *Engine) WriteBatch(points []types.Point) error {
 			}
 			size = size + v.Size() + len(keyBuf)
 			values[string(keyBuf)] = append(values[string(keyBuf)], v)
+			lifecycles[string(keyBuf)] = int(p.LifeCycle())
 		}
 	}
 	e.engineStats.WrittenDelay.With(prometheus.Labels{"type": "process"}).Observe(float64(time.Since(start).Milliseconds()))
@@ -246,14 +248,13 @@ func (e *Engine) WriteBatch(points []types.Point) error {
 	e.engineStats.WrittenDelay.With(prometheus.Labels{"type": "waiting"}).Observe(float64(time.Since(t2).Milliseconds()))
 	t2 = time.Now()
 
-	err = e.mm.WriteMulti(values, e.syncWrite)
+	err = e.mm.WriteMulti(values, e.syncWrite, lifecycles)
 
 	e.engineStats.WrittenDelay.With(prometheus.Labels{"type": "writing"}).Observe(float64(time.Since(t2).Milliseconds()))
 
 	e.engineStats.WrittenDelay.With(prometheus.Labels{"type": "total"}).Observe(float64(time.Since(start).Milliseconds()))
 
-	val := float64(size) / float64(1024) / float64(1024) / time.Since(start).Seconds()
-	e.engineStats.WrittenOutput.Set(val)
+	e.engineStats.WrittenOutput.Add(float64(size))
 	return err
 }
 

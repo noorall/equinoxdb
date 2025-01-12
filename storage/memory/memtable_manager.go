@@ -82,11 +82,11 @@ func (mm *MemManager) Close() {
 	close(mm.flushCh)
 }
 
-func (mm *MemManager) WriteMulti(values map[string][]types.Value, sync bool) error {
+func (mm *MemManager) WriteMulti(values map[string][]types.Value, sync bool, lifecycles map[string]int) error {
 	mm.Lock()
 	defer mm.Unlock()
 	mm.stats.Writes.Inc()
-	err := mm.mem.WriteMulti(values)
+	err := mm.mem.WriteMulti(values, lifecycles)
 	if err != nil {
 		mm.stats.WriteErr.Inc()
 		return err

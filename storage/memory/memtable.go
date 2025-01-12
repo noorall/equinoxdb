@@ -89,7 +89,7 @@ func OpenMemTable(fid, flags int, opt config.Option) (*MemTable, error) {
 	return mt, nil
 }
 
-func (m *MemTable) WriteMulti(values map[string][]types.Value) error {
+func (m *MemTable) WriteMulti(values map[string][]types.Value, lifecycles map[string]int) error {
 	var addedSize uint64
 	for _, v := range values {
 		addedSize += uint64(types.Values(v).Size())
@@ -100,7 +100,12 @@ func (m *MemTable) WriteMulti(values map[string][]types.Value) error {
 	}
 
 	for k, v := range values {
-		err := m.Cache.Put([]byte(k), v)
+		var err error
+		if lifecycles != nil {
+			err = m.Cache.Put([]byte(k), v, lifecycles[k])
+		} else {
+			err = m.Cache.Put([]byte(k), v, 0)
+		}
 		if err != nil {
 			return errs.Errorf(err, "while writing values to Cache")
 		}
@@ -167,7 +172,7 @@ func (m *MemTable) restoreFromWAL() error {
 
 		switch t := entry.(type) {
 		case *store.WriteWALEntry:
-			if err = m.WriteMulti(t.Values); err != nil {
+			if err = m.WriteMulti(t.Values, nil); err != nil {
 				return err
 			}
 		case *store.DeleteRangeWALEntry:

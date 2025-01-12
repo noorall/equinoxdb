@@ -35,7 +35,7 @@ import (
 const DefaultSegmentSize = 10 * 1024 * 1024
 const maxSSTFileSize = uint32(2048 * 1024 * 1024) // 2GB
 const logEvery = 2 * DefaultSegmentSize
-const DefaultMaxPointsPerBlock = 1000
+const DefaultMaxPointsPerBlock = 2000
 
 const (
 	// DefaultMaxSavedErrors is the number of errors that are stored by a SSTBatchKeyReader before

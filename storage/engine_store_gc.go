@@ -112,6 +112,7 @@ func (e *Engine) gcValueFile(vf *store.ValueFile, lifeCycle int) {
 		return
 	}
 	values := make(map[string][]types.Value)
+	lifeCycles := make(map[string]int)
 	it := store.NewValueFileIterator(vf)
 	for it.Next() == nil {
 		key := it.ReadKey()
@@ -124,8 +125,9 @@ func (e *Engine) gcValueFile(vf *store.ValueFile, lifeCycle int) {
 		}
 		vPtr := types.NewPtrValueValue(header.MinTime, header.MaxTime, v)
 		values[keyStr] = append(values[keyStr], vPtr)
+		lifeCycles[keyStr] = lifeCycle
 	}
-	err = e.mm.WriteMulti(values, e.syncWrite)
+	err = e.mm.WriteMulti(values, e.syncWrite, lifeCycles)
 	if err != nil {
 		return
 	}
