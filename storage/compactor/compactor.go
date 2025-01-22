@@ -15,6 +15,7 @@ package compactor
 import (
 	"bytes"
 	"equinox/pkg/limiter"
+	"equinox/storage/config"
 	"equinox/storage/memory"
 	"equinox/storage/metric"
 	"equinox/storage/separator"
@@ -35,7 +36,6 @@ import (
 const DefaultSegmentSize = 10 * 1024 * 1024
 const maxSSTFileSize = uint32(2048 * 1024 * 1024) // 2GB
 const logEvery = 2 * DefaultSegmentSize
-const DefaultMaxPointsPerBlock = 2000
 
 const (
 	// DefaultMaxSavedErrors is the number of errors that are stored by a SSTBatchKeyReader before
@@ -193,7 +193,7 @@ func (c *Compactor) WriteSnapshot(cache *memory.Cache, logger *zap.Logger) ([]st
 	start := time.Now()
 	card := cache.Count()
 
-	c.totalWritten += uint64(card) * DefaultMaxPointsPerBlock
+	c.totalWritten += uint64(card) * config.DefaultMaxPointsPerBlock
 
 	// Enable throttling if we have lower cardinality or snapshots are going fast.
 	throttle := card < 3e6 && c.snapshotLatencies.avg() < 15*time.Second
@@ -260,7 +260,7 @@ func (c *Compactor) WriteSnapshot(cache *memory.Cache, logger *zap.Logger) ([]st
 func (c *Compactor) compact(fast bool, sstFiles []string, logger *zap.Logger) ([]string, error) {
 	size := c.Size
 	if size <= 0 {
-		size = DefaultMaxPointsPerBlock
+		size = config.DefaultMaxPointsPerBlock
 	}
 
 	c.mu.RLock()

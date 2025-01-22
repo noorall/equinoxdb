@@ -26,6 +26,7 @@ var (
 	ErrEmptyKey             = errors.New("key cannot be empty")
 	ErrEmptyBatch           = errors.New("batch cannot be empty")
 	ErrBlockedWrites        = errors.New("writes are blocked, possibly due to DropAll or Close")
+	ErrFieldTypeConflict    = errors.New("field types conflict")
 )
 
 func Check(err error) {

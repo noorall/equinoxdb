@@ -18,4 +18,4 @@
 
 package config
 
-const DefaultMaxPointsPerBlock = 1000
+const DefaultMaxPointsPerBlock = 2000

@@ -19,7 +19,7 @@
 package types
 
 import (
-	"equinox/common"
+	"equinox/storage/errs"
 	"sync"
 )
 
@@ -45,7 +45,7 @@ func NewEntryValues(values []Value) (*Entry, error) {
 	for _, v := range values {
 		// Make sure all the values are the same types
 		if et != valueType(v) {
-			return nil, equinox.ErrFieldTypeConflict
+			return nil, errs.ErrFieldTypeConflict
 		}
 	}
 
@@ -65,7 +65,7 @@ func (e *Entry) Add(values []Value) error {
 	if e.vType != 0 {
 		for _, v := range values {
 			if e.vType != valueType(v) {
-				return equinox.ErrFieldTypeConflict
+				return errs.ErrFieldTypeConflict
 			}
 		}
 	}

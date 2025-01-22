@@ -10,7 +10,7 @@ import (
 	"equinox/storage/cursor"
 	"equinox/storage/memory"
 	"equinox/storage/metric"
-	separator "equinox/storage/separator"
+	"equinox/storage/separator"
 	"equinox/storage/store"
 	"equinox/storage/types"
 	"errors"
@@ -253,7 +253,7 @@ func (e *Engine) WriteBatch(points []types.Point) error {
 	e.engineStats.WrittenDelay.With(prometheus.Labels{"type": "writing"}).Observe(float64(time.Since(t2).Milliseconds()))
 
 	e.engineStats.WrittenDelay.With(prometheus.Labels{"type": "total"}).Observe(float64(time.Since(start).Milliseconds()))
-
+	e.engineStats.WrittenDuration.Add(time.Since(start).Seconds())
 	e.engineStats.WrittenOutput.Add(float64(size))
 	return err
 }

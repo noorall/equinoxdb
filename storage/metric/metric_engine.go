@@ -9,13 +9,15 @@ var defaultGlobalEngineMetrics = newGlobalEngineMetrics()
 const engineSubsystem = "engine"
 
 type globalEngineMetrics struct {
-	writtenDelay  *prometheus.HistogramVec
-	writtenOutput *prometheus.CounterVec
+	writtenDelay    *prometheus.HistogramVec
+	writtenOutput   *prometheus.GaugeVec
+	writtenDuration *prometheus.GaugeVec
 }
 
 type EngineMetrics struct {
-	WrittenDelay  prometheus.ObserverVec
-	WrittenOutput prometheus.Counter
+	WrittenDelay    prometheus.ObserverVec
+	WrittenOutput   prometheus.Gauge
+	WrittenDuration prometheus.Gauge
 }
 
 func NewEngineMetrics(labels prometheus.Labels) *EngineMetrics {
@@ -23,6 +25,10 @@ func NewEngineMetrics(labels prometheus.Labels) *EngineMetrics {
 	return &EngineMetrics{
 		WrittenDelay: defaultGlobalEngineMetrics.writtenDelay.MustCurryWith(labels),
 		WrittenOutput: defaultGlobalEngineMetrics.writtenOutput.With(prometheus.Labels{
+			"engine": labels["engine"],
+			"type":   "default",
+		}),
+		WrittenDuration: defaultGlobalEngineMetrics.writtenDuration.With(prometheus.Labels{
 			"engine": labels["engine"],
 			"type":   "default",
 		}),
@@ -40,12 +46,19 @@ func newGlobalEngineMetrics() *globalEngineMetrics {
 				Help:      "Histogram of write write_delay_ms in ms",
 				Buckets:   []float64{50, 100, 500},
 			}, name),
-		writtenOutput: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
+		writtenOutput: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
 				Namespace: "equinox",
 				Subsystem: engineSubsystem,
 				Name:      "write_output",
 				Help:      "Histogram of write write_output MB per s",
+			}, name),
+		writtenDuration: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: "equinox",
+				Subsystem: engineSubsystem,
+				Name:      "write_duration",
+				Help:      "Histogram of write s",
 			}, name),
 	}
 }
@@ -54,5 +67,6 @@ func EngineCollectors() []prometheus.Collector {
 	return []prometheus.Collector{
 		defaultGlobalEngineMetrics.writtenDelay,
 		defaultGlobalEngineMetrics.writtenOutput,
+		defaultGlobalEngineMetrics.writtenDuration,
 	}
 }

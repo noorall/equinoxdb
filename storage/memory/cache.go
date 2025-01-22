@@ -21,8 +21,8 @@ package memory
 import (
 	"bytes"
 	"equinox/storage/codec"
+	"equinox/storage/config"
 	"equinox/storage/types"
-	equinox "equinox/types"
 	"math/rand"
 	"runtime"
 	"sync/atomic"
@@ -392,7 +392,7 @@ func NewIteratorForWrite(c *Cache) *Iterator {
 	}
 	it := &Iterator{
 		c:      c,
-		size:   equinox.DefaultMaxPointsPerBlock,
+		size:   config.DefaultMaxPointsPerBlock,
 		nodes:  nodes,
 		ready:  ready,
 		blocks: make(map[*Node][]cacheBlock),
@@ -411,12 +411,12 @@ func (it *Iterator) encode() {
 	for i := 0; i < concurrency; i++ {
 		// Run one goroutine per CPU and encode a section of the key space concurrently
 		go func() {
-			tEnc := codec.GetTimeEncoder(equinox.DefaultMaxPointsPerBlock)
-			fEnc := codec.GetFloatEncoder(equinox.DefaultMaxPointsPerBlock)
-			bEnc := codec.GetBooleanEncoder(equinox.DefaultMaxPointsPerBlock)
-			uEnc := codec.GetUnsignedEncoder(equinox.DefaultMaxPointsPerBlock)
-			sEnc := codec.GetStringEncoder(equinox.DefaultMaxPointsPerBlock)
-			iEnc := codec.GetIntegerEncoder(equinox.DefaultMaxPointsPerBlock)
+			tEnc := codec.GetTimeEncoder(config.DefaultMaxPointsPerBlock)
+			fEnc := codec.GetFloatEncoder(config.DefaultMaxPointsPerBlock)
+			bEnc := codec.GetBooleanEncoder(config.DefaultMaxPointsPerBlock)
+			uEnc := codec.GetUnsignedEncoder(config.DefaultMaxPointsPerBlock)
+			sEnc := codec.GetStringEncoder(config.DefaultMaxPointsPerBlock)
+			iEnc := codec.GetIntegerEncoder(config.DefaultMaxPointsPerBlock)
 
 			defer codec.PutTimeEncoder(tEnc)
 			defer codec.PutFloatEncoder(fEnc)

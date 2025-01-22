@@ -11,7 +11,7 @@ import (
 )
 
 func runWriteEnableSeparator() {
-	file, err := os.Open("/Users/noorall/GolandProjects/equinox/benchmark/data/random_data.csv")
+	file, err := os.Open(DataPath)
 	if err != nil {
 		panic(err)
 	}
@@ -44,7 +44,7 @@ func runWriteEnableSeparator() {
 }
 
 func runWriteDisableSeparator() {
-	file, err := os.Open("/Users/noorall/GolandProjects/equinox/benchmark/data/random_data.csv")
+	file, err := os.Open(DataPath)
 	if err != nil {
 		panic(err)
 	}

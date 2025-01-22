@@ -46,7 +46,7 @@ import (
 const (
 	// MagicNumber is written as the first 4 bytes of a data file to
 	// identify the file as a sst1 formatted file
-	MagicNumber uint32 = 0x16D116D1
+	MagicNumber uint32 = 0x16D216D2
 
 	// Version indicates the version of the SST file format.
 	Version byte = 1

@@ -24,6 +24,8 @@ import (
 	"io/ioutil"
 )
 
+const DataPath = "/Users/noorall/GolandProjects/equinox/benchmark/data/random_data2.csv"
+
 func getTestDB() *storage.Engine {
 	dir, _ := ioutil.TempDir("/Users/noorall/GolandProjects/equinox/benchmark/write/db", "equinox-test")
 
@@ -51,6 +53,6 @@ func main() {
 	//metric.RunMetricServer(log, 2121)
 	//wg.Wait()
 	//runWriteEnableSeparator()
-	//runMultiEnableSeparator()
+	runMultiEnableSeparator()
 	runMultiDisableSeparator()
 }

@@ -16,7 +16,6 @@ import (
 )
 
 const workerCount = 1 // 并发数
-const data = "/Users/noorall/GolandProjects/equinox/benchmark/data/random_data.csv"
 
 func writeChunk(filename string, start, end int64, wg *sync.WaitGroup, id int, e *storage.Engine) {
 	defer wg.Done()
@@ -73,7 +72,7 @@ func runMultiEnableSeparator() {
 	_ = e.Open(context.Background())
 	defer e.Close()
 
-	info, _ := os.Stat(data)
+	info, _ := os.Stat(DataPath)
 	fileSize := info.Size()
 
 	chunkSize := fileSize / int64(workerCount)
@@ -90,7 +89,7 @@ func runMultiEnableSeparator() {
 			end = int64(i+1) * chunkSize
 		}
 		wg.Add(1)
-		go writeChunk(data, start, end, &wg, i, e)
+		go writeChunk(DataPath, start, end, &wg, i, e)
 	}
 	wg.Wait()
 	ts += time.Since(start).Seconds()
@@ -102,7 +101,7 @@ func runMultiDisableSeparator() {
 	_ = e.Open(context.Background())
 	defer e.Close()
 
-	info, _ := os.Stat(data)
+	info, _ := os.Stat(DataPath)
 	fileSize := info.Size()
 
 	chunkSize := fileSize / int64(workerCount)
@@ -119,7 +118,7 @@ func runMultiDisableSeparator() {
 			end = int64(i+1) * chunkSize
 		}
 		wg.Add(1)
-		go writeChunk(data, start, end, &wg, i, e)
+		go writeChunk(DataPath, start, end, &wg, i, e)
 	}
 	wg.Wait()
 	ts += time.Since(start).Seconds()

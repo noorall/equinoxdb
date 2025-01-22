@@ -20,7 +20,7 @@ package codec
 
 import (
 	"equinox/pkg/pool"
-	equinox "equinox/types"
+	"equinox/storage/config"
 	"runtime"
 )
 
@@ -37,7 +37,7 @@ func init() {
 		vals = vals[:0]
 		// Check one out to force the allocation now and hold onto it
 		for i := 0; i < runtime.NumCPU(); i++ {
-			v := p.Get(equinox.DefaultMaxPointsPerBlock)
+			v := p.Get(config.DefaultMaxPointsPerBlock)
 			vals = append(vals, v)
 		}
 		// Add them all back

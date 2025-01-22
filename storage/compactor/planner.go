@@ -19,6 +19,7 @@
 package compactor
 
 import (
+	"equinox/storage/config"
 	"equinox/storage/store"
 	"sort"
 	"sync"
@@ -247,7 +248,7 @@ func (c *DefaultPlanner) PlanOptimize() ([]CompactionGroup, int64) {
 		cur := generations[i]
 
 		// Skip the File if it's over the max size and contains a full block and it does not have any tombstones
-		if cur.count() > 2 && cur.size() > uint64(maxSSTFileSize) && c.FileStore.BlockCount(cur.files[0].Path, 1) == DefaultMaxPointsPerBlock && !cur.hasTombstones() {
+		if cur.count() > 2 && cur.size() > uint64(maxSSTFileSize) && c.FileStore.BlockCount(cur.files[0].Path, 1) == config.DefaultMaxPointsPerBlock && !cur.hasTombstones() {
 			continue
 		}
 
@@ -332,7 +333,7 @@ func (c *DefaultPlanner) Plan(lastWrite time.Time) ([]CompactionGroup, int64) {
 			var skip bool
 
 			// Skip the File if it's over the max size and contains a full block and it does not have any tombstones
-			if len(generations) > 2 && group.size() > uint64(maxSSTFileSize) && c.FileStore.BlockCount(group.files[0].Path, 1) == DefaultMaxPointsPerBlock && !group.hasTombstones() {
+			if len(generations) > 2 && group.size() > uint64(maxSSTFileSize) && c.FileStore.BlockCount(group.files[0].Path, 1) == config.DefaultMaxPointsPerBlock && !group.hasTombstones() {
 				skip = true
 			}
 
@@ -408,7 +409,7 @@ func (c *DefaultPlanner) Plan(lastWrite time.Time) ([]CompactionGroup, int64) {
 		// Skip the File if it's over the max size and contains a full block or the generation is split
 		// over multiple files.  In the latter case, that would mean the data in the File spilled over
 		// the 2GB limit.
-		if g.size() > uint64(maxSSTFileSize) && c.FileStore.BlockCount(g.files[0].Path, 1) == DefaultMaxPointsPerBlock {
+		if g.size() > uint64(maxSSTFileSize) && c.FileStore.BlockCount(g.files[0].Path, 1) == config.DefaultMaxPointsPerBlock {
 			start = i + 1
 		}
 
@@ -452,7 +453,7 @@ func (c *DefaultPlanner) Plan(lastWrite time.Time) ([]CompactionGroup, int64) {
 			}
 
 			// Skip the File if it's over the max size and it contains a full block
-			if gen.size() >= uint64(maxSSTFileSize) && c.FileStore.BlockCount(gen.files[0].Path, 1) == DefaultMaxPointsPerBlock && !gen.hasTombstones() {
+			if gen.size() >= uint64(maxSSTFileSize) && c.FileStore.BlockCount(gen.files[0].Path, 1) == config.DefaultMaxPointsPerBlock && !gen.hasTombstones() {
 				startIndex++
 				continue
 			}
