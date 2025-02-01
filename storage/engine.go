@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"math"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -57,8 +58,9 @@ type Engine struct {
 	compactionStats *metric.CompactionMetrics
 	engineStats     *metric.EngineMetrics
 
-	option config.Option
-	logger *zap.Logger
+	metricServer *http.Server
+	option       config.Option
+	logger       *zap.Logger
 }
 
 func NewEngine(opt config.Option) (*Engine, error) {
@@ -132,7 +134,7 @@ func (e *Engine) Open(ctx context.Context) error {
 	e.logger.Info("starting value file gc worker")
 	e.enableValueFileGc()
 	if e.option.EnableMetrics {
-		metric.RunMetricServer(e.logger, e.option.MetricPort)
+		e.metricServer = metric.RunMetricServer(e.logger, e.option.MetricPort)
 	}
 	return nil
 }
@@ -146,6 +148,11 @@ func (e *Engine) Close() error {
 
 	e.logger.Info("starting close value file gc worker")
 	e.disableValueFileGc()
+
+	if e.option.EnableMetrics {
+		e.logger.Info("starting close metric server")
+		_ = e.metricServer.Close()
+	}
 
 	e.mu.Lock()
 	defer e.mu.Unlock()

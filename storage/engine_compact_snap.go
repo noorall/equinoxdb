@@ -99,6 +99,7 @@ func (e *Engine) doCompactMemTable(mt *memory.MemTable) {
 		case <-quit:
 			return
 		default:
+			mt.Cache.Deduplicate()
 			newFiles, err := e.compactor.WriteSnapshot(mt.Cache, e.logger)
 			if err != nil {
 				e.logger.Warn("Error writing memTable from compactor, retrying", zap.Error(err))

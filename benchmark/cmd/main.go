@@ -22,6 +22,7 @@ import (
 	"equinox/storage"
 	"equinox/storage/config"
 	"io/ioutil"
+	"time"
 )
 
 const DataPath = "/Users/noorall/GolandProjects/equinox/benchmark/data/random_data2.csv"
@@ -45,6 +46,8 @@ func getTestDBNonSep() *storage.Engine {
 	return db
 }
 
+const workerCount = 1
+
 func main() {
 	//runWriteDisableSeparator()
 	//wg := sync.WaitGroup{}
@@ -53,6 +56,9 @@ func main() {
 	//metric.RunMetricServer(log, 2121)
 	//wg.Wait()
 	//runWriteEnableSeparator()
-	runMultiEnableSeparator()
-	runMultiDisableSeparator()
+	//runMultiEnableSeparator()
+	//runMultiDisableSeparator()
+	runMultiEnableSeparator2()
+	time.Sleep(1 * time.Second)
+	runMultiDisableSeparator2()
 }

@@ -33,7 +33,7 @@ type VFileRegionManager struct {
 
 	option config.Option
 
-	mu sync.Mutex
+	mu sync.RWMutex
 
 	stats *metric.ValueFileMetrics
 }
@@ -52,8 +52,6 @@ func (r *VFileRegionManager) RegisterRegion(lifeCycle int) error {
 	default:
 		return fmt.Errorf("illegal lifeCycle")
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	if _, ok := r.vFileManagers[lifeCycle]; ok {
 		return nil
 	}
@@ -85,12 +83,12 @@ func (r *VFileRegionManager) GetAllVFileManager() map[int]*VFileManager {
 }
 
 func (r *VFileRegionManager) GetOrCreateVFileManager(lifeCycle int) (*VFileManager, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	err := r.RegisterRegion(lifeCycle)
 	if err != nil {
 		return nil, err
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	if vm, ok := r.vFileManagers[lifeCycle]; ok {
 		return vm, nil
 	}

@@ -411,8 +411,14 @@ func (v *VFileManager) validateWriteSize(dataSize uint64) error {
 }
 
 func (v *VFileManager) flush(vf *ValueFile) (*ValueFile, error) {
+	v.fileWrite.Lock()
+	defer v.fileWrite.Unlock()
 	if v.writeOffset() <= v.valueFileMaxSize && v.numEntriesWritten <= v.valueFileMaxEntries {
-		return vf, nil
+		v.filesLock.RLock()
+		maxFid := v.maxFid
+		curValueFile := v.filesMap[maxFid]
+		v.filesLock.RUnlock()
+		return curValueFile, nil
 	}
 
 	if err := vf.Flush(v.writeOffset()); err != nil {

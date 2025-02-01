@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-func writeChunk(filename string, start, end int64, wg *sync.WaitGroup, id int, e *storage.Engine) {
+func writeChunk2(filename string, start, end int64, wg *sync.WaitGroup, id int, e *storage.Engine) {
 	defer wg.Done()
 
 	file, err := os.Open(filename)
@@ -32,6 +32,9 @@ func writeChunk(filename string, start, end int64, wg *sync.WaitGroup, id int, e
 	if start != 0 {
 		_, _ = reader.ReadString('\n') // 扔掉半行
 	}
+
+	fields := types.Fields{}
+	fid := 1
 
 	for {
 		// 当前偏移
@@ -56,16 +59,17 @@ func writeChunk(filename string, start, end int64, wg *sync.WaitGroup, id int, e
 			fmt.Printf("[Worker %d] CSV解析失败: %v\n", id, err)
 			continue
 		}
-		fields := types.Fields{
-			"field" + strconv.Itoa(id): record[1],
+		fields["field"+strconv.Itoa(fid%6)] = record[1]
+		fid++
+		if fid%6 == 0 {
+			t, _ := strconv.ParseInt(record[0], 10, 64)
+			p, _ := types.NewPoint("hh"+strconv.Itoa(id), fields, time.Unix(0, t), types.LifeCycle(id))
+			e.Write(p)
 		}
-		t, _ := strconv.ParseInt(record[0], 10, 64)
-		p, _ := types.NewPoint("hh", fields, time.Unix(0, t), types.LifeCycle(id))
-		e.Write(p)
 	}
 }
 
-func runMultiEnableSeparator() {
+func runMultiEnableSeparator2() {
 	e := getTestDB()
 	_ = e.Open(context.Background())
 	defer e.Close()
@@ -87,14 +91,14 @@ func runMultiEnableSeparator() {
 			end = int64(i+1) * chunkSize
 		}
 		wg.Add(1)
-		go writeChunk(DataPath, start, end, &wg, i, e)
+		go writeChunk2(DataPath, start, end, &wg, i, e)
 	}
 	wg.Wait()
 	ts += time.Since(start).Seconds()
-	fmt.Printf("%f MB/s \n", 10240/ts)
+	fmt.Printf("%f MB/s \n", float64(fileSize)/1024/1024/ts)
 }
 
-func runMultiDisableSeparator() {
+func runMultiDisableSeparator2() {
 	e := getTestDBNonSep()
 	_ = e.Open(context.Background())
 	defer e.Close()
@@ -116,9 +120,9 @@ func runMultiDisableSeparator() {
 			end = int64(i+1) * chunkSize
 		}
 		wg.Add(1)
-		go writeChunk(DataPath, start, end, &wg, i, e)
+		go writeChunk2(DataPath, start, end, &wg, i, e)
 	}
 	wg.Wait()
 	ts += time.Since(start).Seconds()
-	fmt.Printf("%f MB/s \n", 10240/ts)
+	fmt.Printf("%f MB/s \n", float64(fileSize)/1024/1024/ts)
 }
