@@ -7,26 +7,7 @@ import (
 )
 
 var (
-	ErrTruncating    = errors.New("do truncate")
-	ErrStopIteration = errors.New("stop iteration")
-	ErrBadWAL        = errors.New(
-		"WAL log is broken, need to be truncated that might cause data loss")
-	ErrChecksumMismatch     = errors.New("checksum mismatch")
-	ErrCompressionType      = errors.New("unsupported compression types")
-	ErrBadMagic             = errors.New("manifest has bad magic")
-	ErrMFUnsupportedVersion = errors.New("manifest has unsupported version")
-	ErrFillTable            = errors.New("unable to fill tables")
-	ErrNoRewrite            = errors.New("value log GC attempt didn't result in any cleanup")
-	ErrRejected             = errors.New("value log GC request rejected")
-	ErrValueLogSize         = errors.New("invalid ValueLogFileSize, must be in range [1MB, 2GB)")
-	ErrNoRoom               = errors.New("no room for write")
-	ErrDBClosed             = errors.New("DB Closed")
-	ErrBatchTooBig          = errors.New("batch is too big to fit into one batch write")
-	ErrKeyNotFound          = errors.New("key not found")
-	ErrEmptyKey             = errors.New("key cannot be empty")
-	ErrEmptyBatch           = errors.New("batch cannot be empty")
-	ErrBlockedWrites        = errors.New("writes are blocked, possibly due to DropAll or Close")
-	ErrFieldTypeConflict    = errors.New("field types conflict")
+	ErrFieldTypeConflict = errors.New("field types conflict")
 )
 
 func Check(err error) {

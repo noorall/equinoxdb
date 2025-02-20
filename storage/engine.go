@@ -364,6 +364,10 @@ func (e *Engine) LastModified() time.Time {
 	return e.filestore.LastModified()
 }
 
+func (e *Engine) GetTotalWritten() int64 {
+	return int64(e.vFileRegionManager.Stats.GetTotalWritten() + e.filestore.Metric.GetTotalWritten())
+}
+
 // keyCursor returns a store.KeyCursor for the given key starting at time t.
 func (e *Engine) keyCursor(key []byte, t int64, ascending bool) *store.KeyCursor {
 	return e.filestore.KeyCursor(context.Background(), key, t, ascending)

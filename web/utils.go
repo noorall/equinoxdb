@@ -16,11 +16,10 @@
  * limitations under the License.
  */
 
-package errs
+package main
 
-import "fmt"
+import "time"
 
-var (
-	// ErrWALCorrupt is returned when reading a corrupt WAL entry.
-	ErrWALCorrupt = fmt.Errorf("corrupted WAL entry")
-)
+func formatTime(t time.Time) string {
+	return t.Format("2006-01-02 15:04:05")
+}

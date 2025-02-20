@@ -1,0 +1,27 @@
+<!-- templates/login.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>登录</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 p-6">
+<div class="container mx-auto max-w-sm">
+    <h1 class="text-2xl font-bold mb-6">登录</h1>
+    <form action="/login" method="POST" class="bg-white p-6 rounded shadow space-y-4">
+        <div>
+            <label class="block font-semibold">用户名</label>
+            <input type="text" name="username" class="w-full border px-3 py-2 rounded" required />
+        </div>
+        <div>
+            <label class="block font-semibold">密码</label>
+            <input type="password" name="password" class="w-full border px-3 py-2 rounded" required />
+        </div>
+        <div>
+            <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">登录</button>
+        </div>
+    </form>
+</div>
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>EquinoxDB控制台-添加任务</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 p-6">
+<div class="container mx-auto">
+    <div class="flex justify-between items-center mb-4">
+        <h1 class="text-2xl font-bold">EquinoxDB-原型展示平台</h1>
+        <a href="/" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">返回首页</a>
+    </div>
+    <h1 class="text-2xl font-bold mb-6">提交任务</h1>
+    <form action="/task/save" method="POST" class="bg-white p-6 rounded-lg shadow-md space-y-6">
+        <div>
+            <label for="thread" class="block mb-2 font-semibold text-gray-700">写入线程</label>
+            <input
+                    type="number"
+                    id="thread"
+                    name="thread"
+                    class="w-full border border-gray-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    value="1"
+                    required
+                    min="1"
+            />
+        </div>
+        <div>
+            <label for="type" class="block mb-2 font-semibold text-gray-700">任务类型</label>
+            <select
+                    id="type"
+                    name="type"
+                    class="w-full border border-gray-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+                <option value="0">写入测试-非键值分离</option>
+                <option value="1">写入测试-键值分离</option>
+            </select>
+        </div>
+        <div>
+            <label for="fileInput" class="block mb-2 font-semibold text-gray-700">数据集（仅支持./benchmark/data_set目录下的数据集）</label>
+            <input
+                    type="file"
+                    id="fileInput"
+                    class="w-full text-gray-700 border border-gray-300 rounded-md cursor-pointer
+                       file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold
+                       file:bg-blue-600 file:text-white hover:file:bg-blue-700"
+            />
+        </div>
+        <input type="hidden" name="data_path" id="hiddenFileName" />
+        <div>
+            <button
+                    type="submit"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-md px-6 py-3 transition"
+            >
+                提交任务
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+    document.getElementById('fileInput').addEventListener('change', function (e) {
+        const file = e.target.files[0];
+        if (file) {
+            document.getElementById('hiddenFileName').value = "/Users/noorall/GolandProjects/equinox/benchmark/data_set/" + file.name;
+        }
+    });
+</script>
+</body>
+</html>

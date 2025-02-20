@@ -1,7 +1,9 @@
 package metric
 
 import (
+	"fmt"
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 )
 
 var defaultGlobalValueFileMetrics = newGlobalValueFileMetrics()
@@ -16,6 +18,15 @@ type ValueFileMetrics struct {
 	files        prometheus.Gauge
 	size         prometheus.Gauge
 	totalWritten prometheus.Gauge
+}
+
+func (f *ValueFileMetrics) GetTotalWritten() float64 {
+	m := &dto.Metric{}
+	if err := f.totalWritten.Write(m); err != nil {
+		fmt.Println("error writing metric:", err)
+		return 0
+	}
+	return m.GetGauge().GetValue()
 }
 
 func (f *ValueFileMetrics) AddSize(n int64) {

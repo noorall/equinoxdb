@@ -35,14 +35,14 @@ type VFileRegionManager struct {
 
 	mu sync.RWMutex
 
-	stats *metric.ValueFileMetrics
+	Stats *metric.ValueFileMetrics
 }
 
 func NewVFileRegionManager(option config.Option) *VFileRegionManager {
 	return &VFileRegionManager{
 		vFileManagers: make(map[int]*VFileManager),
 		option:        option,
-		stats:         metric.NewValueFileMetrics(metric.GetEngineLabs(option)),
+		Stats:         metric.NewValueFileMetrics(metric.GetEngineLabs(option)),
 	}
 }
 
@@ -55,7 +55,7 @@ func (r *VFileRegionManager) RegisterRegion(lifeCycle int) error {
 	if _, ok := r.vFileManagers[lifeCycle]; ok {
 		return nil
 	}
-	vm, err := NewVFileManager(r.option, lifeCycle, r.stats)
+	vm, err := NewVFileManager(r.option, lifeCycle, r.Stats)
 	if err != nil {
 		return err
 	}

@@ -1,7 +1,9 @@
 package metric
 
 import (
+	"fmt"
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"sync/atomic"
 )
 
@@ -36,6 +38,15 @@ func (f *FileStoreMetrics) SetSize(n int64) {
 
 func (f *FileStoreMetrics) SetFiles(n int64) {
 	f.files.Set(float64(n))
+}
+
+func (f *FileStoreMetrics) GetTotalWritten() float64 {
+	m := &dto.Metric{}
+	if err := f.totalWritten.Write(m); err != nil {
+		fmt.Println("error writing metric:", err)
+		return 0
+	}
+	return m.GetGauge().GetValue()
 }
 
 func NewFileStoreMetrics(labels prometheus.Labels) *FileStoreMetrics {

@@ -1,0 +1,193 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>EquinoxDB-原型展示平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 p-6">
+<div class="container mx-auto">
+    <div class="flex justify-between items-center mb-4">
+        <h1 class="text-2xl font-bold">EquinoxDB-原型展示平台</h1>
+        <div class="flex justify-end items-center space-x-2 mb-4">
+            <a href="/task/new" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">添加任务</a>
+            <button id="compareButton" class="hidden bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700" onclick="compareSelected()">开始对比</button>
+            <button id="toggleCompareBtn" onclick="toggleCompareMode()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">数据对比</button>
+        </div>
+    </div>
+
+    <table class="w-full bg-white shadow rounded">
+        <thead>
+        <tr class="bg-gray-200 text-left">
+            <th class="p-3 hidden" id="checkboxHeader">选择</th>
+            <th class="p-3">任务ID</th>
+            <th class="p-3">任务类型</th>
+            <th class="p-3">写入线程</th>
+            <th class="p-3">执行状态</th>
+            <th class="p-3">执行进度</th>
+            <th class="p-3">开始时间</th>
+            <th class="p-3">结束时间</th>
+            <th class="p-3">操作</th>
+        </tr>
+        </thead>
+        <tbody>
+        {{range .tasks}}
+        <tr class="border-t" data-task-id="{{.ID}}">
+            <td class="p-3 hidden compare-checkbox-cell">
+                <label>
+                    <input type="checkbox" class="task-checkbox" value="{{.ID}}" onchange="toggleRowHighlight(this)">
+                </label>
+            </td>
+            <td class="p-3">{{.ID}}</td>
+            <td class="p-3">
+                {{if eq .Type 0}}
+                写入吞吐测试-非键值分离
+                {{else if eq .Type 1}}
+                写入吞吐测试-键值分离
+                {{else}}
+                未知异常
+                {{end}}</td>
+            <td class="p-3">{{.Thread}}</td>
+            <td class="p-3 status-finished">
+                {{if .Stopped}}
+                已终止
+                {{else if .Finished}}
+                执行完成
+                {{else}}
+                正在执行
+                {{end}}</td>
+            <td class="p-3 status-progress">{{.Progress}} %</td>
+            <td class="p-3 ">{{formatTime .CreatedAt}}</td>
+            <td class="p-3 status-finished-at">
+                {{if .Stopped}}
+                已终止
+                {{else if .Finished}}
+                {{formatTime .FinishedAt}}
+                {{else}}
+                正在执行
+                {{end}}
+            </td>
+            <td class="p-3 space-x-2">
+                {{if eq .Type 0}}
+                <a href="http://localhost:3000/public-dashboards/924c2fa3b8ae457095656e9db4e70c53?from={{.CreatedAt | unixMilli}}{{if .Finished }}&to={{.FinishedAt | unixMilli}}{{end}}" target="_blank" class="text-blue-600 hover:underline">查看</a>
+                {{else}}
+                <a href="http://localhost:3000/public-dashboards/2ad7bfa2405a4bba8be721752fbddbb3?from={{.CreatedAt | unixMilli}}{{if .Finished }}&to={{.FinishedAt | unixMilli}}{{end}}" target="_blank" class="text-blue-600 hover:underline">查看</a>
+                {{end}}
+                {{if or .Finished .Stopped}}
+                <button class="text-gray-400 cursor-not-allowed" disabled>终止</button>
+                {{else}}
+                <button class="text-red-600 hover:underline" onclick="if(confirm('确定要终止任务吗？')) stopTask({{.ID}})">终止</button>
+                {{end}}
+                <button class="text-red-600 hover:underline" onclick="if(confirm('确定要删除任务吗？')) deleteTask({{.ID}})">删除</button>
+            </td>
+        </tr>
+        {{end}}
+        </tbody>
+    </table>
+</div>
+
+<script>
+    function stopTask(id) {
+        fetch(`${window.location.origin}/task/stop/${id}`, { method: 'POST' }).then(() => location.reload());
+    }
+
+    function deleteTask(id) {
+        fetch(`${window.location.origin}/task/delete/${id}`, { method: 'POST' }).then(() => location.reload());
+    }
+
+    function refreshStatus(id) {
+        fetch(`${window.location.origin}/task/status/${id}`)
+            .then(res => res.json())
+            .then(data => {
+                const row = document.querySelector(`tr[data-task-id='${id}']`);
+                if (!row) return;
+
+                // 更新各个字段
+                row.querySelector(".status-progress").textContent = (data.status_progress || "0") + " %";
+
+                // 使用 data.task_enabled 而不是未定义的 task_enabled
+                if (data.is_stopped) {
+                    row.querySelector(".status-finished").textContent = "已终止";
+                }else if(data.is_finished){
+                    row.querySelector(".status-finished").textContent = "执行完成";
+                    row.querySelector(".status-finished-at").textContent = data.finished_at;
+                }
+
+            })
+            .catch(error => {
+                console.error(`刷新任务 ${id} 状态失败:`, error);
+            });
+    }
+
+    function refreshAllStatuses() {
+        const rows = document.querySelectorAll("tr[data-task-id]");
+        rows.forEach(row => {
+            const id = row.getAttribute("data-task-id");
+            refreshStatus(id);
+        });
+    }
+
+    setInterval(refreshAllStatuses, 5000); // 每 5 秒刷新
+</script>
+<script>
+    let compareMode = false;
+
+    function toggleCompareMode() {
+        compareMode = !compareMode;
+
+        // 显示/隐藏 checkbox 列
+        document.getElementById("checkboxHeader").classList.toggle("hidden", !compareMode);
+        document.querySelectorAll(".compare-checkbox-cell").forEach(el => {
+            el.classList.toggle("hidden", !compareMode);
+        });
+
+        // 显示/隐藏 “开始对比” 按钮
+        document.getElementById("compareButton").classList.toggle("hidden", !compareMode);
+
+        // 切换“数据对比”按钮文字
+        const toggleBtn = document.getElementById("toggleCompareBtn");
+        if (compareMode) {
+            toggleBtn.textContent = "取消对比";
+            toggleBtn.classList.remove("bg-green-600", "hover:bg-green-700");
+            toggleBtn.classList.add("bg-red-600", "hover:bg-red-700");
+        } else {
+            toggleBtn.textContent = "数据对比";
+            toggleBtn.classList.remove("bg-red-600", "hover:bg-red-700");
+            toggleBtn.classList.add("bg-green-600", "hover:bg-green-700");
+        }
+
+        // 清空所有复选框选中状态和行高亮
+        const checkboxes = document.querySelectorAll('tbody input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+            cb.checked = false;
+            const tr = cb.closest('tr');
+            tr.classList.remove('bg-blue-100', 'shadow-md');
+        });
+    }
+
+    function compareSelected() {
+        const selected = Array.from(document.querySelectorAll(".task-checkbox:checked"))
+            .map(cb => cb.value);
+
+        if (selected.length < 2) {
+            alert("请至少选择两个任务进行对比。");
+            return;
+        }
+
+        const url = `/task/compare?ids=${selected.join(",")}`;
+        window.location.href = url;
+    }
+</script>
+<script>
+    function toggleRowHighlight(checkbox) {
+        const tr = checkbox.closest('tr');
+        if (checkbox.checked) {
+            tr.classList.add('bg-blue-100', 'shadow-md');
+        } else {
+            tr.classList.remove('bg-blue-100', 'shadow-md');
+        }
+    }
+</script>
+</body>
+</html>

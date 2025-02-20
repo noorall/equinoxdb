@@ -11,9 +11,9 @@ import (
 )
 
 func main() {
-	outputFile := "/Users/noorall/GolandProjects/equinox/benchmark/data/random_data2.csv"
+	outputFile := "/Users/noorall/GolandProjects/equinox/benchmark/data_set/random_data_1.csv"
 	stringSize := 1024 * 64
-	dataCount := 40000
+	dataCount := 4000
 
 	file, err := os.Create(outputFile)
 	if err != nil {

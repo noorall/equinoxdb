@@ -16,11 +16,29 @@
  * limitations under the License.
  */
 
-package errs
+package executor
 
-import "fmt"
-
-var (
-	// ErrWALCorrupt is returned when reading a corrupt WAL entry.
-	ErrWALCorrupt = fmt.Errorf("corrupted WAL entry")
+import (
+	"equinox/storage"
+	"equinox/storage/config"
+	"os"
 )
+
+func getTestDB() *storage.Engine {
+	dir, _ := os.MkdirTemp("/Users/noorall/GolandProjects/equinox/benchmark/write/db", "equinox-test")
+
+	options := config.NewOption()
+	options.Dir = dir
+	db, _ := storage.NewEngine(options)
+	return db
+}
+
+func getTestDBNonSep() *storage.Engine {
+	dir, _ := os.MkdirTemp("/Users/noorall/GolandProjects/equinox/benchmark/write/db", "equinox-test")
+
+	options := config.NewOption()
+	options.SeparateEnabled = false
+	options.Dir = dir
+	db, _ := storage.NewEngine(options)
+	return db
+}
