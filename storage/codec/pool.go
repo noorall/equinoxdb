@@ -20,31 +20,30 @@ package codec
 
 import (
 	"equinox/pkg/pool"
-	"equinox/storage/config"
 	"runtime"
 )
 
 func init() {
 	// Prime the pools with one encoder/decoder for each available CPU.
-	vals := make([]interface{}, 0, runtime.NumCPU())
-	for _, p := range []*pool.Generic{
-		timeEncoderPool, timeDecoderPool,
-		integerEncoderPool, integerDecoderPool,
-		floatDecoderPool, floatDecoderPool,
-		stringEncoderPool, stringEncoderPool,
-		booleanEncoderPool, booleanDecoderPool,
-	} {
-		vals = vals[:0]
-		// Check one out to force the allocation now and hold onto it
-		for i := 0; i < runtime.NumCPU(); i++ {
-			v := p.Get(config.DefaultMaxPointsPerBlock)
-			vals = append(vals, v)
-		}
-		// Add them all back
-		for _, v := range vals {
-			p.Put(v)
-		}
-	}
+	//vals := make([]interface{}, 0, runtime.NumCPU())
+	//for _, p := range []*pool.Generic{
+	//	timeEncoderPool, timeDecoderPool,
+	//	integerEncoderPool, integerDecoderPool,
+	//	floatDecoderPool, floatDecoderPool,
+	//	stringEncoderPool, stringEncoderPool,
+	//	booleanEncoderPool, booleanDecoderPool,
+	//} {
+	//	vals = vals[:0]
+	//	// Check one out to force the allocation now and hold onto it
+	//	for i := 0; i < runtime.NumCPU(); i++ {
+	//		v := p.Get(config.DefaultMaxPointsPerBlock)
+	//		vals = append(vals, v)
+	//	}
+	//	// Add them all back
+	//	for _, v := range vals {
+	//		p.Put(v)
+	//	}
+	//}
 }
 
 var (

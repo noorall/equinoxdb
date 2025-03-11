@@ -39,6 +39,7 @@ type TimeEncoder interface {
 	Write(t int64)
 	Bytes() ([]byte, error)
 	Reset()
+	RawBytes() ([]byte, error)
 }
 
 type encoder struct {
@@ -121,6 +122,13 @@ func (e *encoder) Bytes() ([]byte, error) {
 	}
 
 	return e.encodePacked(div, dts)
+}
+
+func (e *encoder) RawBytes() ([]byte, error) {
+	if len(e.ts) == 0 {
+		return e.bytes[:0], nil
+	}
+	return e.encodeRaw()
 }
 
 func (e *encoder) encodePacked(div uint64, dts []uint64) ([]byte, error) {
@@ -575,10 +583,8 @@ func timeBatchDecodeAllUncompressed(b []byte, dst []int64) ([]int64, error) {
 		dst = dst[:count]
 	}
 
-	prev := uint64(0)
 	for i := range dst {
-		prev += binary.BigEndian.Uint64(b[i*8:])
-		dst[i] = int64(prev)
+		dst[i] = int64(binary.BigEndian.Uint64(b[i*8:]))
 	}
 
 	return dst, nil

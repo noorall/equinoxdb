@@ -38,6 +38,7 @@ import (
 
 // stringCompressedSnappy is a compressed encoding using Snappy compression
 const stringCompressedSnappy = 1
+const stringUnCompressedSnappy = 0
 
 // StringEncoder encodes multiple strings into a byte slice.
 type StringEncoder struct {
@@ -48,7 +49,7 @@ type StringEncoder struct {
 // NewStringEncoder returns a new StringEncoder with an initial buffer ready to hold sz bytes.
 func NewStringEncoder(sz int) StringEncoder {
 	return StringEncoder{
-		bytes: make([]byte, 0, sz),
+		bytes: make([]byte, 1, sz),
 	}
 }
 
@@ -57,7 +58,8 @@ func (e *StringEncoder) Flush() {}
 
 // Reset sets the encoder back to its initial state.
 func (e *StringEncoder) Reset() {
-	e.bytes = e.bytes[:0]
+	e.bytes[0] = 0
+	e.bytes = e.bytes[:1]
 }
 
 // Write encodes s to the underlying buffer.
@@ -75,8 +77,16 @@ func (e *StringEncoder) Write(s string) {
 func (e *StringEncoder) Bytes() ([]byte, error) {
 	// Compress the currently appended bytes using snappy and prefix with
 	// a 1 byte header for future extension
-	data := snappy.Encode(nil, e.bytes)
+	data := snappy.Encode(nil, e.bytes[1:])
 	return append([]byte{stringCompressedSnappy << 4}, data...), nil
+}
+
+// RawBytes returns a copy of the underlying buffer.
+func (e *StringEncoder) RawBytes() ([]byte, error) {
+	// Compress the currently appended bytes using snappy and prefix with
+	// a 1 byte header for future extension
+	e.bytes[0] = stringUnCompressedSnappy << 4
+	return e.bytes, nil
 }
 
 // StringDecoder decodes a byte slice into strings.
@@ -95,9 +105,14 @@ func (e *StringDecoder) SetBytes(b []byte) error {
 	var data []byte
 	if len(b) > 0 {
 		var err error
-		data, err = snappy.Decode(nil, b[1:])
-		if err != nil {
-			return fmt.Errorf("failed to decode string block: %v", err.Error())
+		mask := b[0] >> 4
+		if mask == stringCompressedSnappy {
+			data, err = snappy.Decode(nil, b[1:])
+			if err != nil {
+				return fmt.Errorf("failed to decode string block: %v", err.Error())
+			}
+		} else {
+			data = b[1:]
 		}
 	}
 
@@ -179,6 +194,31 @@ func EncodeStringBlockUsing(buf []byte, values []types.Value, tenc TimeEncoder, 
 	}
 	// Encoded string values
 	vb, err := venc.Bytes()
+	if err != nil {
+		return nil, err
+	}
+
+	// Prepend the first timestamp of the block in the first 8 bytes
+	return packBlock(buf, BlockString, tb, vb), nil
+}
+
+func EncodeRawStringBlockUsing(buf []byte, values []types.Value, tenc TimeEncoder, venc StringEncoder) ([]byte, error) {
+	tenc.Reset()
+	venc.Reset()
+
+	for _, v := range values {
+		vv := v.(types.StringValue)
+		tenc.Write(vv.UnixNano())
+		venc.Write(vv.RawValue())
+	}
+
+	// Encoded timestamp values
+	tb, err := tenc.RawBytes()
+	if err != nil {
+		return nil, err
+	}
+	// Encoded string values
+	vb, err := venc.RawBytes()
 	if err != nil {
 		return nil, err
 	}
@@ -361,10 +401,16 @@ func StringArrayDecodeAll(b []byte, dst []string) ([]string, error) {
 		// it is important that to note that `snappy.Decode` always returns
 		// a newly allocated slice as the final strings reference this slice
 		// directly.
-		b, err = snappy.Decode(nil, b[1:])
-		if err != nil {
-			return []string{}, fmt.Errorf("failed to decode string block: %v", err.Error())
+		mask := b[0] >> 4
+		if mask == stringCompressedSnappy {
+			b, err = snappy.Decode(nil, b[1:])
+			if err != nil {
+				return []string{}, fmt.Errorf("failed to decode string block: %v", err.Error())
+			}
+		} else {
+			b = b[1:]
 		}
+
 	} else {
 		return []string{}, nil
 	}

@@ -26,11 +26,11 @@ import (
 )
 
 const (
-	DefaultCompactThroughput            = 128 * 1024 * 1024
-	DefaultCompactThroughputBurst       = 256 * 1024 * 1024
+	DefaultCompactThroughput            = 256 * 1024 * 1024
+	DefaultCompactThroughputBurst       = 512 * 1024 * 1024
 	DefaultCompactFullWriteColdDuration = 4 * time.Hour
-	DefaultNumMemTables                 = 4
-	DefaultMaxMemTableSize              = 64 << 20
+	DefaultNumMemTables                 = 3
+	DefaultMaxMemTableSize              = 256 << 20
 	DefaultMaxValueFileSize             = 1<<30 - 1
 	DefaultValueFileMaxEntries          = 4096
 )
@@ -69,7 +69,7 @@ type Option struct {
 
 func NewOption() Option {
 	return Option{
-		SyncWrite:       true,
+		SyncWrite:       false,
 		NumMemTables:    DefaultNumMemTables,
 		MaxMemTableSize: DefaultMaxMemTableSize,
 

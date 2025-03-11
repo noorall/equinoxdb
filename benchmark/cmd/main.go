@@ -22,10 +22,9 @@ import (
 	"equinox/storage"
 	"equinox/storage/config"
 	"io/ioutil"
-	"time"
 )
 
-const DataPath = "/Users/noorall/GolandProjects/equinox/benchmark/data/random_data2.csv"
+const DataPath = "/Users/noorall/GolandProjects/equinox/benchmark/data/random_data.csv"
 
 func getTestDB() *storage.Engine {
 	dir, _ := ioutil.TempDir("/Users/noorall/GolandProjects/equinox/benchmark/write/db", "equinox-test")
@@ -57,8 +56,8 @@ func main() {
 	//wg.Wait()
 	//runWriteEnableSeparator()
 	//runMultiEnableSeparator()
-	//runMultiDisableSeparator()
-	runMultiEnableSeparator2()
-	time.Sleep(1 * time.Second)
-	runMultiDisableSeparator2()
+	runMultiDisableSeparator()
+	//runMultiEnableSeparator()
+	//time.Sleep(1 * time.Second)
+	//runMultiDisableSeparator2()
 }

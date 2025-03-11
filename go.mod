@@ -14,7 +14,7 @@ require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/golang/snappy v1.0.0
 	github.com/prometheus/client_golang v1.22.0
-	github.com/prometheus/client_model v0.6.1
+	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/sys v0.32.0

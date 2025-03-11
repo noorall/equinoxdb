@@ -85,40 +85,40 @@ func (f *ValueFile) WriteBlock(key []byte, minTime, maxTime int64, block []byte)
 	n := len(key) + 4 + len(block) + VFileHeaderSize
 
 	newPos := atomic.AddUint32(&f.pos, uint32(n))
+
 	if int(newPos) >= len(f.Data) {
 		if err := f.Truncate(int64(newPos)); err != nil {
 			return 0, err
 		}
 	}
 
-	start := int(newPos) - n
+	go func() {
 
-	checksum := make([]byte, crc32.Size)
-	binary.BigEndian.PutUint32(checksum[:], crc32.ChecksumIEEE(block))
+		start := int(newPos) - n
 
-	header := &VFileHeader{
-		KeyLen:  uint16(len(key)),
-		DataLen: uint32(len(block)),
-		KeyHash: xxhash.Sum64(key),
-		MinTime: minTime,
-		MaxTime: maxTime,
-	}
+		checksum := make([]byte, crc32.Size)
+		binary.BigEndian.PutUint32(checksum[:], crc32.ChecksumIEEE(block))
 
-	headerBytes, _ := header.MarshalBinary()
+		header := &VFileHeader{
+			KeyLen:  uint16(len(key)),
+			DataLen: uint32(len(block)),
+			KeyHash: xxhash.Sum64(key),
+			MinTime: minTime,
+			MaxTime: maxTime,
+		}
 
-	start += copy(f.Data[start:], headerBytes)
+		headerBytes, _ := header.MarshalBinary()
 
-	start += copy(f.Data[start:], key)
+		start += copy(f.Data[start:], headerBytes)
 
-	start += copy(f.Data[start:], checksum)
+		start += copy(f.Data[start:], key)
 
-	start += copy(f.Data[start:], block)
+		start += copy(f.Data[start:], checksum)
 
-	if uint32(start) != newPos {
-		return 0, fmt.Errorf("error while write value file")
-	}
+		start += copy(f.Data[start:], block)
 
-	atomic.AddUint32(&f.size, uint32(n))
+		atomic.AddUint32(&f.size, uint32(n))
+	}()
 
 	return newPos, nil
 }

@@ -25,6 +25,7 @@ import (
 	"equinox/storage/separator"
 	"equinox/storage/store"
 	"equinox/storage/types"
+	"runtime"
 	"sync/atomic"
 )
 
@@ -115,8 +116,9 @@ func (it *cacheKeyIterator) Close() error {
 }
 
 func (it *cacheKeyIterator) encode(vfm *store.VFileRegionManager, decider *separator.SeparateDecider, k int, separateEnabled bool) {
-	concurrency := 4
+	concurrency := runtime.GOMAXPROCS(0)
 	n := len(it.ready)
+	buf := len(it.nodes[0].GetKey())*10 + it.nodes[0].GetEntry().Size()
 
 	chunkSize := 1
 	idx := uint64(0)
@@ -128,7 +130,7 @@ func (it *cacheKeyIterator) encode(vfm *store.VFileRegionManager, decider *separ
 			fEnc := codec.GetFloatEncoder(config.DefaultMaxPointsPerBlock)
 			bEnc := codec.GetBooleanEncoder(config.DefaultMaxPointsPerBlock)
 			uEnc := codec.GetUnsignedEncoder(config.DefaultMaxPointsPerBlock)
-			sEnc := codec.GetStringEncoder(config.DefaultMaxPointsPerBlock)
+			sEnc := codec.GetStringEncoder(buf)
 			iEnc := codec.GetIntegerEncoder(config.DefaultMaxPointsPerBlock)
 
 			defer codec.PutTimeEncoder(tEnc)
@@ -192,7 +194,7 @@ func (it *cacheKeyIterator) encode(vfm *store.VFileRegionManager, decider *separ
 					case types.BooleanValue:
 						b, err = codec.EncodeBooleanBlockUsing(nil, values[:end], tEnc, bEnc)
 					case types.StringValue:
-						b, err = codec.EncodeStringBlockUsing(nil, values[:end], tEnc, sEnc)
+						b, err = codec.EncodeRawStringBlockUsing(nil, values[:end], tEnc, sEnc)
 					default:
 						b, err = codec.EncodeValues(values[:end], nil)
 					}

@@ -421,9 +421,12 @@ func (v *VFileManager) flush(vf *ValueFile) (*ValueFile, error) {
 		return curValueFile, nil
 	}
 
-	if err := vf.Flush(v.writeOffset()); err != nil {
-		return nil, err
-	}
+	go func() {
+		err := vf.Flush(v.writeOffset())
+		if err != nil {
+			v.logger.Error("failed to flush value file", zap.Error(err))
+		}
+	}()
 
 	newvf, err := v.createValueFile()
 	if err != nil {
