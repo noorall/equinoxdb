@@ -45,19 +45,20 @@ func compareTasks(c *gin.Context) {
 		return
 	}
 
-	labels := []string{}
+	labels := [][]string{}
 	written := []float64{}
 	durations := []float64{}
 	for _, task := range tasks {
-		labels = append(labels, fmt.Sprintf("任务%d", task.ID))
 		written = append(written, float64(task.WrittenTotal)/1024.0/1024.0) // 转为MB
 		durations = append(durations, task.WriteDuration)
 	}
 
+	labels = append(labels, []string{fmt.Sprintf("数据量")})
+
 	c.HTML(http.StatusOK, "compare.html", gin.H{
 		"Labels":       toJSON(labels),
-		"WrittenData":  toJSON(written),
-		"DurationData": toJSON(durations),
+		"WrittenData":  toJSON([][]float64{written}),
+		"DurationData": toJSON([][]float64{durations}),
 	})
 }
 
