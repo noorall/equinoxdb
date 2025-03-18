@@ -1,4 +1,3 @@
-<!-- templates/login.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -22,6 +21,159 @@
             <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">登录</button>
         </div>
     </form>
+
+    <!-- 悬浮命令行按钮 -->
+    <button onclick="toggleTerminal()" class="fixed bottom-6 right-6 bg-gray-800 text-white px-4 py-2 rounded-full shadow-lg hover:bg-gray-900 z-50">
+        打开命令行
+    </button>
+
+    <!-- 悬浮命令行窗口 -->
+    <div id="terminal" class="fixed bottom-20 right-6 w-[800px] h-96 bg-black text-green-400 p-4 rounded-lg shadow-2xl font-mono hidden flex flex-col z-50 cursor-move"
+         onmousedown="startDrag(event)" onmouseup="stopDrag()" onmousemove="dragTerminal(event)">
+
+        <!-- 顶部标题栏和关闭按钮 -->
+        <div class="flex justify-between items-center mb-2 text-white select-none">
+            <span class="text-sm">🖥️ EquinoxDB 命令行</span>
+            <button onclick="toggleTerminal()" class="text-red-400 hover:text-red-600 text-xl">&times;</button>
+        </div>
+
+        <!-- 输出区域 -->
+        <div class="flex-1 overflow-y-auto text-sm leading-relaxed" id="terminal-content"></div>
+
+        <!-- 命令行输入区 -->
+        <div class="flex items-center border-t border-gray-700 pt-2 mt-2">
+            <span class="text-white mr-2">$</span>
+            <input id="command-input"
+                   class="flex-1 bg-black text-green-400 outline-none placeholder-green-600"
+                   placeholder="输入命令后回车执行"
+                   onkeydown="handleInput(event)" />
+            <span id="loading-spinner" class="ml-2 hidden animate-spin text-white">⏳</span>
+        </div>
+    </div>
 </div>
+
+
+<script>
+    const STORAGE_KEY = "terminal_command_history_full";
+    let history = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    let historyIndex = -1;
+
+    // 渲染所有历史到终端
+    function renderHistory() {
+        history.forEach(entry => {
+            appendToTerminal(entry.cmd, true);   // 显示命令
+            appendToTerminal(entry.output);      // 显示输出
+        });
+    }
+
+    function saveHistory() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(-10))); // 最多保留10条
+    }
+
+    function appendToTerminal(text, isCommand = false) {
+        const content = document.getElementById("terminal-content");
+        const line = document.createElement("div");
+        line.textContent = (isCommand ? "$ " : "") + text;
+        content.appendChild(line);
+        content.scrollTop = content.scrollHeight;
+    }
+
+    function handleInput(event) {
+        const input = document.getElementById("command-input");
+
+        if (event.key === "Enter") {
+            const cmd = input.value.trim();
+            if (!cmd) return;
+
+            appendToTerminal(cmd, true);
+            input.value = "";
+            historyIndex = -1;
+
+            document.getElementById("loading-spinner").classList.remove("hidden");
+
+            fetch("/exec", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ cmd })
+            })
+                .then(res => res.text())
+                .then(output => {
+                    appendToTerminal(output);
+
+                    // 保存完整历史
+                    history.push({ cmd, output });
+                    saveHistory();
+                })
+                .catch(err => {
+                    appendToTerminal("Error: " + err);
+                    history.push({ cmd, output: "Error: " + err });
+                    saveHistory();
+                })
+                .finally(() => {
+                    document.getElementById("loading-spinner").classList.add("hidden");
+                });
+        }
+
+        // ↑ ↓ 调用历史命令
+        if (event.key === "ArrowUp") {
+            if (history.length > 0 && historyIndex < history.length - 1) {
+                historyIndex++;
+                input.value = history[history.length - 1 - historyIndex].cmd;
+            }
+            event.preventDefault();
+        }
+
+        if (event.key === "ArrowDown") {
+            if (historyIndex > 0) {
+                historyIndex--;
+                input.value = history[history.length - 1 - historyIndex].cmd;
+            } else {
+                historyIndex = -1;
+                input.value = "";
+            }
+            event.preventDefault();
+        }
+    }
+
+    // 打开终端时显示历史
+    function toggleTerminal() {
+        const term = document.getElementById("terminal");
+        const input = document.getElementById("command-input");
+        const content = document.getElementById("terminal-content");
+
+        term.classList.toggle("hidden");
+
+        if (!term.classList.contains("hidden")) {
+            content.innerHTML = "";
+            renderHistory();
+            input.focus();
+        }
+    }
+
+    // 拖动窗口逻辑（保持不变）
+    let isDragging = false;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+
+    function startDrag(e) {
+        const term = document.getElementById("terminal");
+        isDragging = true;
+        dragOffsetX = e.clientX - term.offsetLeft;
+        dragOffsetY = e.clientY - term.offsetTop;
+    }
+
+    function stopDrag() {
+        isDragging = false;
+    }
+
+    function dragTerminal(e) {
+        if (!isDragging) return;
+        const term = document.getElementById("terminal");
+        term.style.left = `${e.clientX - dragOffsetX}px`;
+        term.style.top = `${e.clientY - dragOffsetY}px`;
+        term.style.right = "auto";
+        term.style.bottom = "auto";
+    }
+</script>
 </body>
 </html>
