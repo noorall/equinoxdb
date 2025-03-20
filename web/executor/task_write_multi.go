@@ -55,8 +55,6 @@ func writeChunk(ctx context.Context, filename string, start, end int64, wg *sync
 	}
 
 	fields := types.Fields{}
-	fid := 1
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -83,13 +81,12 @@ func writeChunk(ctx context.Context, filename string, start, end int64, wg *sync
 				fmt.Printf("[Worker %d] CSV解析失败: %v\n", id, err)
 				continue
 			}
-			fields["field"+strconv.Itoa(fid%6)] = record[1]
-			fid++
-			if fid%6 == 0 {
-				t, _ := strconv.ParseInt(record[0], 10, 64)
-				p, _ := types.NewPoint("hh"+strconv.Itoa(id), fields, time.Unix(0, t), types.LifeCycle(id))
-				e.Write(p)
+			t, _ := strconv.ParseInt(record[0], 10, 64)
+			for i := 1; i < len(record); i++ {
+				fields[fmt.Sprintf("field%d", i)] = record[i]
 			}
+			p, _ := types.NewPoint("test"+strconv.Itoa(id), fields, time.Unix(0, t), types.LifeCycle(id))
+			_ = e.Write(p)
 		}
 	}
 }
@@ -102,7 +99,6 @@ func RunMultiWriteTask(ctx context.Context, task *common.Task, db *gorm.DB) {
 		e = getTestDB()
 	}
 	_ = e.Open(context.Background())
-	defer e.Close()
 
 	info, _ := os.Stat(task.DataPath)
 	fileSize := info.Size()
@@ -141,11 +137,17 @@ func RunMultiWriteTask(ctx context.Context, task *common.Task, db *gorm.DB) {
 	}()
 	wg.Wait()
 	close(stop)
-	task.WriteDuration = time.Since(s).Seconds()
-	task.Progress = 100
-	task.DataSize = fileSize
-	task.WrittenTotal = e.GetTotalWritten()
-	task.Finished = true
-	task.FinishedAt = time.Now()
-	db.Save(task)
+	_ = e.Close()
+	err := db.First(task, task.ID).Error
+	if err == nil {
+		task.WriteDuration = time.Since(s).Seconds()
+		if !task.Stopped {
+			task.Progress = 100
+			task.Finished = true
+		}
+		task.WrittenSize = e.GetWrittenSize()
+		task.WrittenTotal = e.GetTotalWritten()
+		task.FinishedAt = time.Now()
+		db.Save(task)
+	}
 }

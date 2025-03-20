@@ -26,11 +26,11 @@ import (
 )
 
 const (
-	DefaultCompactThroughput            = 256 * 1024 * 1024
-	DefaultCompactThroughputBurst       = 512 * 1024 * 1024
+	DefaultCompactThroughput            = 192 * 1024 * 1024
+	DefaultCompactThroughputBurst       = 192 * 1024 * 1024
 	DefaultCompactFullWriteColdDuration = 4 * time.Hour
 	DefaultNumMemTables                 = 3
-	DefaultMaxMemTableSize              = 256 << 20
+	DefaultMaxMemTableSize              = 64 << 20
 	DefaultMaxValueFileSize             = 1<<30 - 1
 	DefaultValueFileMaxEntries          = 4096
 )

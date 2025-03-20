@@ -365,7 +365,11 @@ func (e *Engine) LastModified() time.Time {
 }
 
 func (e *Engine) GetTotalWritten() int64 {
-	return int64(e.vFileRegionManager.Stats.GetTotalWritten() + e.filestore.Metric.GetTotalWritten())
+	return int64(e.vFileRegionManager.Stats.GetTotalWritten() + e.filestore.Metric.GetTotalWritten() + e.mm.MemoryMetrics.GetTotalWritten())
+}
+
+func (e *Engine) GetWrittenSize() int64 {
+	return int64(e.mm.MemoryMetrics.GetTotalWritten())
 }
 
 // keyCursor returns a store.KeyCursor for the given key starting at time t.

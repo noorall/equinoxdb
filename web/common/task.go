@@ -17,6 +17,7 @@ type Task struct {
 	DataPath string
 	DataSize int64
 
+	WrittenSize   int64
 	WrittenTotal  int64
 	WriteDuration float64
 }

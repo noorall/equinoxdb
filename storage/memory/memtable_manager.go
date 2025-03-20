@@ -48,7 +48,7 @@ type MemManager struct {
 	flushCh chan *MemTable
 	wg      sync.WaitGroup
 
-	stats *metric.MemoryMetrics
+	MemoryMetrics *metric.MemoryMetrics
 
 	option config.Option
 
@@ -57,11 +57,11 @@ type MemManager struct {
 
 func NewMemManager(opt config.Option, logger *zap.Logger) (*MemManager, error) {
 	mm := &MemManager{
-		imm:     make([]*MemTable, 0, opt.NumMemTables),
-		flushCh: make(chan *MemTable, opt.NumMemTables),
-		option:  opt,
-		logger:  logger,
-		stats:   metric.NewCacheMetrics(metric.GetEngineLabs(opt)),
+		imm:           make([]*MemTable, 0, opt.NumMemTables),
+		flushCh:       make(chan *MemTable, opt.NumMemTables),
+		option:        opt,
+		logger:        logger,
+		MemoryMetrics: metric.NewCacheMetrics(metric.GetEngineLabs(opt)),
 	}
 	err := mm.restoreMemTables()
 	if err != nil {
@@ -70,7 +70,8 @@ func NewMemManager(opt config.Option, logger *zap.Logger) (*MemManager, error) {
 	if mm.mem, err = mm.newMemTable(); err != nil {
 		return nil, errs.Errorf(err, "cannot create empty memtable")
 	}
-	mm.stats.LastSnapshot.SetToCurrentTime()
+	mm.MemoryMetrics.LastSnapshot.SetToCurrentTime()
+	mm.MemoryMetrics.TotalWritten.Set(0)
 	return mm, nil
 }
 
@@ -85,13 +86,18 @@ func (mm *MemManager) Close() {
 func (mm *MemManager) WriteMulti(values map[string][]types.Value, sync bool, lifecycles map[string]int) error {
 	mm.Lock()
 	defer mm.Unlock()
-	mm.stats.Writes.Inc()
+	mm.MemoryMetrics.Writes.Inc()
 	err := mm.mem.WriteMulti(values, lifecycles)
 	if err != nil {
-		mm.stats.WriteErr.Inc()
+		mm.MemoryMetrics.WriteErr.Inc()
 		return err
 	}
-	mm.stats.MemBytes.Set(float64(mm.mem.Cache.Size()))
+	var addedSize uint64
+	for _, v := range values {
+		addedSize += uint64(types.Values(v).Size())
+	}
+	mm.MemoryMetrics.TotalWritten.Add(float64(addedSize))
+	mm.MemoryMetrics.MemBytes.Set(float64(mm.mem.Cache.Size()))
 	if sync {
 		return mm.mem.SyncWAL()
 	}
@@ -105,7 +111,7 @@ func (mm *MemManager) DeleteRange(keys [][]byte, min, max int64) {
 	for _, m := range mm.imm {
 		m.DeleteRange(keys, min, max)
 	}
-	mm.stats.MemBytes.Set(float64(mm.mem.Cache.Size()))
+	mm.MemoryMetrics.MemBytes.Set(float64(mm.mem.Cache.Size()))
 }
 
 func (mm *MemManager) Values(key []byte) types.Values {
@@ -183,7 +189,7 @@ func (mm *MemManager) OnMemTableFlushed(mt *MemTable) {
 	mm.imm = mm.imm[1:]
 	mm.wg.Done()
 	mt.DecrRef()
-	mm.stats.LastSnapshot.SetToCurrentTime()
+	mm.MemoryMetrics.LastSnapshot.SetToCurrentTime()
 }
 
 func (mm *MemManager) newMemTable() (*MemTable, error) {
@@ -191,7 +197,7 @@ func (mm *MemManager) newMemTable() (*MemTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	mm.stats.MemBytes.Set(float64(mem.Cache.Size()))
+	mm.MemoryMetrics.MemBytes.Set(float64(mem.Cache.Size()))
 	mm.nextMemFid++
 	return mem, nil
 }

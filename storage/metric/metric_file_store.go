@@ -50,11 +50,15 @@ func (f *FileStoreMetrics) GetTotalWritten() float64 {
 }
 
 func NewFileStoreMetrics(labels prometheus.Labels) *FileStoreMetrics {
-	return &FileStoreMetrics{
+	m := &FileStoreMetrics{
 		files:        defaultGlobalFileStoreMetrics.files.With(labels),
 		size:         defaultGlobalFileStoreMetrics.size.With(labels),
 		totalWritten: defaultGlobalFileStoreMetrics.totalWritten.With(labels),
 	}
+	m.files.Set(0)
+	m.size.Set(0)
+	m.totalWritten.Set(0)
+	return m
 }
 
 func newGlobalFileStoreMetrics() *globalFileStoreMetrics {

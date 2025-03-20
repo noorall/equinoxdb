@@ -10,10 +10,23 @@ import (
 	"time"
 )
 
+const MB = 1024 * 1024
+const GB = MB * 1024
+
+func formatSize(size int64) string {
+	if size >= GB {
+		return fmt.Sprintf("%.2f GB", float64(size)/float64(GB))
+	}
+	return fmt.Sprintf("%.0f MB", float64(size)/float64(MB))
+}
+
 func main() {
-	outputFile := "/Users/noorall/GolandProjects/equinox/benchmark/data_set/random_data_1.csv"
-	stringSize := 1024 * 64
-	dataCount := 4000
+	dataSize := 4 * GB
+	stringSize := 1024 * 16
+	fieldCount := 2
+
+	outputFile := fmt.Sprintf("/Users/noorall/GolandProjects/equinox/benchmark/data_set/random_data_%s.csv", formatSize(int64(dataSize)))
+	dataCount := int(float64(dataSize/stringSize/fieldCount) / 2.15)
 
 	file, err := os.Create(outputFile)
 	if err != nil {
@@ -28,15 +41,17 @@ func main() {
 
 		timestamp := time.Now().UnixNano()
 
-		randomBytes := make([]byte, stringSize)
-		if _, err := rand.Read(randomBytes); err != nil {
-			panic(err)
-		}
-		randomString := hex.EncodeToString(randomBytes) // 转换为16进制确保可打印字符
-
 		record := []string{
 			strconv.FormatInt(timestamp, 10),
-			randomString,
+		}
+
+		for j := 0; j < fieldCount; j++ {
+			randomBytes := make([]byte, stringSize)
+			if _, err := rand.Read(randomBytes); err != nil {
+				panic(err)
+			}
+			randomString := hex.EncodeToString(randomBytes)
+			record = append(record, randomString)
 		}
 
 		if err := writer.Write(record); err != nil {

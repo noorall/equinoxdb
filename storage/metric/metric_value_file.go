@@ -50,11 +50,15 @@ func (f *ValueFileMetrics) IncFiles() {
 }
 
 func NewValueFileMetrics(labels prometheus.Labels) *ValueFileMetrics {
-	return &ValueFileMetrics{
+	m := &ValueFileMetrics{
 		files:        defaultGlobalValueFileMetrics.files.With(labels),
 		size:         defaultGlobalValueFileMetrics.size.With(labels),
 		totalWritten: defaultGlobalValueFileMetrics.totalWritten.With(labels),
 	}
+	m.files.Set(0)
+	m.size.Set(0)
+	m.totalWritten.Set(0)
+	return m
 }
 
 func newGlobalValueFileMetrics() *globalValueFileMetrics {

@@ -13,17 +13,12 @@
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        <!-- 写入总量图表 -->
+        {{range .Charts}}
         <div class="bg-white shadow rounded-xl p-6">
-            <h2 class="text-lg font-semibold mb-4">写入总量 (MB)</h2>
-            <canvas id="writtenChart" class="w-full h-80"></canvas>
+            <h2 class="text-lg font-semibold mb-4">{{.Title}}</h2>
+            <canvas id="{{.Id}}" class="w-full h-80"></canvas>
         </div>
-
-        <!-- 写入耗时图表 -->
-        <div class="bg-white shadow rounded-xl p-6">
-            <h2 class="text-lg font-semibold mb-4">写入耗时 (秒)</h2>
-            <canvas id="durationChart" class="w-full h-80"></canvas>
-        </div>
+        {{end}}
     </div>
 
 </div>
@@ -31,18 +26,13 @@
 <script>
     const barPercentage = 1.0  // 调整为更合适的宽度比例
     const categoryPercentage = 0.2
-    const labels = {{.Labels}};
-
-    // 假设数据结构为二维数组（每个标签对应[任务一值, 任务二值]）
-    const writtenData = {{.WrittenData}};  // 格式示例：[[100, 150], [200, 250]]
-    const durationData = {{.DurationData}}; // 格式示例：[[5, 7], [10, 12]]
-
-    // 数据拆分逻辑（从二维数组提取任务数据）
-    const writtenTask1 = writtenData.map(d => d[0])
-    const writtenTask2 = writtenData.map(d => d[1])
-    const durationTask1 = durationData.map(d => d[0])
-    const durationTask2 = durationData.map(d => d[1])
-
+    const charts = {{.ChartsJson}}
+    const colorPalette = [
+        '#537bc4', '#f67019', '#e6194b','#3cb44b','#f53794',
+        '#8549ba', '#4dc9f6', '#166a8f', '#00a950', '#58595b',
+        '#acc236','#ffe119', '#4363d8', '#f58231', '#911eb4',
+        '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080'
+    ];
     const commonOptions = {
         responsive: true,
         interaction: { mode: 'nearest', axis: 'x', intersect: false },
@@ -60,55 +50,24 @@
         }
     };
 
-    // 写入总量图表
-    new Chart(document.getElementById('writtenChart'), {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: '任务一 写入总量',
-                    data: writtenTask1,
-                    backgroundColor: 'rgba(54, 162, 235, 0.8)', // 蓝色
-                    barPercentage: barPercentage,
-                    categoryPercentage: categoryPercentage
+    charts.forEach(chart => {
+            const datasets = chart.Legends.map((legend, idx) => ({
+                label: legend,
+                data: Object.values(chart.Values).map(v => v[idx]),
+                backgroundColor: colorPalette[idx%20],  // 自动不同颜色
+                barPercentage: barPercentage,
+                categoryPercentage: categoryPercentage
+            }));
+            new Chart(document.getElementById(chart.Id), {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(chart.Values),
+                    datasets: datasets
                 },
-                {
-                    label: '任务二 写入总量',
-                    data: writtenTask2,
-                    backgroundColor: 'rgba(255, 159, 64, 0.8)', // 橙色
-                    barPercentage: barPercentage,
-                    categoryPercentage: categoryPercentage
-                }
-            ]
-        },
-        options: commonOptions
-    });
-
-    // 写入耗时图表
-    new Chart(document.getElementById('durationChart'), {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: '任务一 写入耗时',
-                    data: durationTask1,
-                    backgroundColor: 'rgba(75, 192, 192, 0.8)', // 绿色
-                    barPercentage: barPercentage,
-                    categoryPercentage: categoryPercentage
-                },
-                {
-                    label: '任务二 写入耗时',
-                    data: durationTask2,
-                    backgroundColor: 'rgba(153, 102, 255, 0.8)', // 紫色
-                    barPercentage: barPercentage,
-                    categoryPercentage: categoryPercentage
-                }
-            ]
-        },
-        options: commonOptions
-    });
+                options: commonOptions
+            });
+        }
+    )
 </script>
 
 </body>

@@ -90,11 +90,6 @@ func OpenMemTable(fid, flags int, opt config.Option) (*MemTable, error) {
 }
 
 func (m *MemTable) WriteMulti(values map[string][]types.Value, lifecycles map[string]int) error {
-	var addedSize uint64
-	for _, v := range values {
-		addedSize += uint64(types.Values(v).Size())
-	}
-
 	if err := m.wal.WriteMulti(values); err != nil {
 		return errs.Errorf(err, "while writing values to wal")
 	}

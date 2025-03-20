@@ -22,8 +22,8 @@
         <tr class="bg-gray-200 text-left">
             <th class="p-3 hidden" id="checkboxHeader">选择</th>
             <th class="p-3">任务ID</th>
-            <th class="p-3">任务类型</th>
-            <th class="p-3">写入线程</th>
+            <th class="p-3">引擎类型</th>
+            <th class="p-3">任务参数</th>
             <th class="p-3">执行状态</th>
             <th class="p-3">执行进度</th>
             <th class="p-3">开始时间</th>
@@ -36,19 +36,19 @@
         <tr class="border-t" data-task-id="{{.ID}}">
             <td class="p-3 hidden compare-checkbox-cell">
                 <label>
-                    <input type="checkbox" class="task-checkbox" value="{{.ID}}" onchange="toggleRowHighlight(this)">
+                    <input type="checkbox" class="task-checkbox" value="{{.ID}}" {{if not .Finished}}disabled{{end}} onchange="toggleRowHighlight(this)">
                 </label>
             </td>
             <td class="p-3">{{.ID}}</td>
             <td class="p-3">
                 {{if eq .Type 0}}
-                写入吞吐测试-非键值分离
+                非键值分离
                 {{else if eq .Type 1}}
-                写入吞吐测试-键值分离
+                键值分离
                 {{else}}
                 未知异常
                 {{end}}</td>
-            <td class="p-3">{{.Thread}}</td>
+            <td class="p-3">写入线程:{{.Thread}}; 数据集:{{fileName .DataPath}}</td>
             <td class="p-3 status-finished">
                 {{if .Stopped}}
                 已终止
@@ -70,14 +70,16 @@
             </td>
             <td class="p-3 space-x-2">
                 {{if eq .Type 0}}
-                <a href="http://localhost:3000/public-dashboards/924c2fa3b8ae457095656e9db4e70c53?from={{.CreatedAt | unixMilli}}{{if .Finished }}&to={{.FinishedAt | unixMilli}}{{end}}" target="_blank" class="text-blue-600 hover:underline">查看</a>
+                <a id="view-task-link-{{.ID}}" href="http://localhost:3000/public-dashboards/924c2fa3b8ae457095656e9db4e70c53?from={{.CreatedAt | unixMilli}}{{if .Finished }}&to={{.FinishedAt | unixMilli}}{{end}}" target="_blank" class="text-blue-600 hover:underline">查看</a>
                 {{else}}
-                <a href="http://localhost:3000/public-dashboards/2ad7bfa2405a4bba8be721752fbddbb3?from={{.CreatedAt | unixMilli}}{{if .Finished }}&to={{.FinishedAt | unixMilli}}{{end}}" target="_blank" class="text-blue-600 hover:underline">查看</a>
+                <a id="view-task-link-{{.ID}}" href="http://localhost:3000/public-dashboards/2ad7bfa2405a4bba8be721752fbddbb3?from={{.CreatedAt | unixMilli}}{{if .Finished }}&to={{.FinishedAt | unixMilli}}{{end}}" target="_blank" class="text-blue-600 hover:underline">查看</a>
                 {{end}}
-                {{if or .Finished .Stopped}}
-                <button class="text-gray-400 cursor-not-allowed" disabled>终止</button>
+                {{if .Finished}}
+                <button id="stop-task-btn-{{.ID}}" class="text-gray-400 cursor-not-allowed" disabled>终止</button>
+                {{else if .Stopped}}
+                <button id="stop-task-btn-{{.ID}}" class="text-gray-400 cursor-not-allowed" disabled>终止</button>
                 {{else}}
-                <button class="text-red-600 hover:underline" onclick="if(confirm('确定要终止任务吗？')) stopTask({{.ID}})">终止</button>
+                <button id="stop-task-btn-{{.ID}}" class="text-red-600 hover:underline" onclick="if(confirm('确定要终止任务吗？')) stopTask({{.ID}})">终止</button>
                 {{end}}
                 <button class="text-red-600 hover:underline" onclick="if(confirm('确定要删除任务吗？')) deleteTask({{.ID}})">删除</button>
             </td>
@@ -113,7 +115,40 @@
                     row.querySelector(".status-finished").textContent = "执行完成";
                     row.querySelector(".status-finished-at").textContent = data.finished_at;
                 }
+                // 更新“终止”按钮
+                if (data.is_stopped || data.is_finished) {
+                    const stopBtn = row.querySelector(`#stop-task-btn-${id}`);
+                    if (stopBtn && !stopBtn.disabled) { // 仅当按钮未禁用时替换
+                        const newBtn = document.createElement("button");
+                        newBtn.id = `stop-task-btn-${id}`;
+                        newBtn.className = "text-gray-400 cursor-not-allowed";
+                        newBtn.disabled = true;
+                        newBtn.textContent = "终止";
+                        stopBtn.replaceWith(newBtn);
+                    }
+                }
 
+                // 更新复选框的禁用状态
+                const checkbox = row.querySelector(".task-checkbox");
+                if (checkbox) {
+                    checkbox.disabled = !data.is_finished; // 仅当任务完成时启用复选框
+                    if (!data.is_finished) {
+                        checkbox.checked = false; // 如果禁用，取消选中状态
+                        row.classList.remove('bg-blue-100', 'shadow-md'); // 移除高亮
+                    }
+                }
+
+                // 更新查看标签
+                const viewLink = row.querySelector(`#view-task-link-${id}`);
+                if (viewLink) {
+                    const baseUrl = viewLink.href.split('?')[0];
+                    let newHref = `${baseUrl}?from=${new Date(data.created_at).getTime()}`;
+                    if (data.is_finished && data.finished_at) {
+                        const finishedAtMillis = new Date(data.finished_at).getTime();
+                        newHref += `&to=${finishedAtMillis}`;
+                    }
+                    viewLink.href = newHref;
+                }
             })
             .catch(error => {
                 console.error(`刷新任务 ${id} 状态失败:`, error);
@@ -127,7 +162,7 @@
             refreshStatus(id);
         });
     }
-
+    refreshAllStatuses()
     setInterval(refreshAllStatuses, 5000); // 每 5 秒刷新
 </script>
 <script>
@@ -169,7 +204,7 @@
     function compareSelected() {
         const selected = Array.from(document.querySelectorAll(".task-checkbox:checked"))
             .map(cb => cb.value);
-
+        console.log("compareSelected 被调用");
         if (selected.length < 2) {
             alert("请至少选择两个任务进行对比。");
             return;

@@ -12,6 +12,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -35,7 +37,14 @@ func loadTemplates() *template.Template {
 				return 0
 			}
 			return float64(a) / float64(b)
-		}, "unixMilli": func(t time.Time) int64 {
+		},
+		"byteToMB": func(a int64) int64 {
+			return a / 1024 / 1024
+		},
+		"fileName": func(a string) string {
+			return filepath.Base(a)
+		},
+		"unixMilli": func(t time.Time) int64 {
 			return t.UnixMilli() // 毫秒级时间戳（Go 1.17+）
 		},
 	}).ParseFS(tmplFS, "templates/*.html"))
@@ -121,7 +130,7 @@ func resetAllTasks() {
 
 func showTaskList(c *gin.Context) {
 	var tasks []common.Task
-	db.Find(&tasks)
+	db.Order("id DESC").Find(&tasks)
 	c.HTML(http.StatusOK, "index.html", gin.H{"tasks": tasks})
 }
 
@@ -138,6 +147,20 @@ func saveTask(c *gin.Context) {
 		db.First(&task, id)
 	}
 	task.DataPath = c.PostForm("data_path")
+
+	info, err := os.Stat(task.DataPath)
+	if err != nil {
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		c.String(http.StatusOK, `
+			<script>
+				alert("数据集不存在！");
+				history.back();
+			</script>
+		`)
+		return
+	}
+
+	task.DataSize = info.Size()
 	task.CreatedAt = time.Now()
 	task.Thread, _ = strconv.Atoi(c.PostForm("thread"))
 	task.Type, _ = strconv.Atoi(c.PostForm("type"))
@@ -153,20 +176,29 @@ func deleteTask(c *gin.Context) {
 	if err != nil {
 		return
 	}
+	if cancel, ok := cancels.Load(uint(id)); ok {
+		if cancelFunc, ok := cancel.(context.CancelFunc); ok {
+			var task common.Task
+			db.First(&task, id)
+			task.Stopped = true
+			db.Save(&task)
+			cancelFunc()
+		}
+	}
 	db.Delete(&common.Task{}, id)
 	c.Redirect(http.StatusSeeOther, "/")
 }
 
 func stopTask(c *gin.Context) {
-	id, err := strconv.Atoi(c.Param("id"))
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		return
 	}
-	if cancel, ok := cancels.Load(id); ok {
+	if cancel, ok := cancels.Load(uint(id)); ok {
 		if cancelFunc, ok := cancel.(context.CancelFunc); ok {
 			var task common.Task
-			task.Stopped = true
 			db.First(&task, id)
+			task.Stopped = true
 			db.Save(&task)
 			cancelFunc()
 		} else {
@@ -191,6 +223,7 @@ func getTaskStatus(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"is_finished":     task.Finished,
+		"created_at":      formatTime(task.CreatedAt),
 		"finished_at":     formatTime(task.FinishedAt),
 		"status_progress": task.Progress,
 		"is_stopped":      task.Stopped,

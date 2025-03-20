@@ -22,7 +22,7 @@ type EngineMetrics struct {
 
 func NewEngineMetrics(labels prometheus.Labels) *EngineMetrics {
 
-	return &EngineMetrics{
+	m := &EngineMetrics{
 		WrittenDelay: defaultGlobalEngineMetrics.writtenDelay.MustCurryWith(labels),
 		WrittenOutput: defaultGlobalEngineMetrics.writtenOutput.With(prometheus.Labels{
 			"engine": labels["engine"],
@@ -33,6 +33,9 @@ func NewEngineMetrics(labels prometheus.Labels) *EngineMetrics {
 			"type":   "default",
 		}),
 	}
+	m.WrittenDuration.Set(0)
+	m.WrittenOutput.Set(0)
+	return m
 }
 
 func newGlobalEngineMetrics() *globalEngineMetrics {
