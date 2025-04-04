@@ -10,6 +10,11 @@ var (
 )
 
 func GetEngineLabs(opt config.Option) prometheus.Labels {
+	if opt.IsTestDB {
+		return prometheus.Labels{
+			"engine": "separate-test-db",
+		}
+	}
 	if !opt.SeparateEnabled {
 		return prometheus.Labels{
 			"engine": "non-separate",

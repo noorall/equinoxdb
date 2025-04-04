@@ -63,7 +63,7 @@ func main() {
 	flag.BoolVar(&logging, "logging", false, "是否启用请求日志，默认为 true")
 	flag.Parse()
 
-	fmt.Println("配置参数：")
+	fmt.Println("WebUI配置：")
 	fmt.Printf("端口: %s\n", port)
 	fmt.Printf("用户名: %s\n", username)
 	fmt.Printf("密码: %s\n", password) // 注意，密码是敏感信息，这里可能会根据需求决定是否打印
@@ -78,9 +78,14 @@ func main() {
 		panic("failed to connect database")
 	}
 
-	err = db.AutoMigrate(&common.Task{})
+	err = db.AutoMigrate(&common.Task{}, &common.FieldTypeEntry{})
 	if err != nil {
 		panic("failed to migrate database")
+	}
+
+	err = initTestDb()
+	if err != nil {
+		panic("failed to init test database")
 	}
 
 	r := gin.Default()
@@ -105,6 +110,7 @@ func main() {
 	r.SetHTMLTemplate(loadTemplates())
 	r.GET("/login", loginPage)
 	r.POST("/login", login)
+	r.POST("/exec", exec)
 
 	protected := r.Group("/")
 	protected.Use(checkLogin)

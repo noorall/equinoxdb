@@ -129,19 +129,9 @@ func NewVFileManager(option config.Option, lifeCycle int, stats *metric.ValueFil
 		return nil, fmt.Errorf("failed to get lastest fmap")
 	}
 
-	offset := last.size
-	v.stats.AddSize(int64(last.size))
+	last.restoreValueFile()
 
-	// the last value file is not empty, truncate it and create a new one.
-	if offset > 0 {
-		if err := last.Truncate(int64(offset)); err != nil {
-			return nil, errs.Errorf(err, "While truncating the last value file: %s", last.path)
-		}
-
-		if _, err := v.createValueFile(); err != nil {
-			return nil, errs.Errorf(err, "While creating a new last value file")
-		}
-	}
+	v.stats.AddSize(int64(last.pos))
 
 	// the last value file is empty, reuse it.
 	return v, nil

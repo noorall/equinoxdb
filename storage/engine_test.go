@@ -82,6 +82,14 @@ func TestRead(t *testing.T) {
 		require.Equal(t, 1, arr.Len())
 		require.Equal(t, []int64{int64(i)}, arr.Values)
 	}
+	for i := 0; i < len(startTimes); i++ {
+		cur, err := e.Get([]byte("hh"), []byte("field1"), types.Integer, startTimes[i], endTimes[i], false)
+		require.NoError(t, err)
+		curi := cur.(cursor.IntegerArrayCursor)
+		arr := curi.Next()
+		require.Equal(t, 1, arr.Len())
+		require.Equal(t, []int64{int64(i)}, arr.Values)
+	}
 	err := e.Close()
 	require.NoError(t, err)
 }

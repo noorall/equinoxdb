@@ -16,7 +16,7 @@ func (e *Engine) build{{.Name}}ArrayCursor(key []byte, min, max int64, asc bool)
 		return cur
 	} else {
 		cur := cursor.New{{.Name}}ArrayDescendingCursor()
-		cur.Reset(min, max, cacheValues, keyCursor)
+		cur.Reset(max, min, cacheValues, keyCursor)
 		return cur
 	}
 }

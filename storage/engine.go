@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"equinox/pkg/limiter"
-	"equinox/pkg/models"
 	"equinox/storage/compactor"
 	"equinox/storage/config"
 	"equinox/storage/cursor"
@@ -124,7 +123,7 @@ func (e *Engine) Open(ctx context.Context) error {
 		return err
 	}
 	e.logger.Info("starting create value file manager")
-	err := e.vFileRegionManager.RegisterRegion(models.Default)
+	err := e.vFileRegionManager.RegisterRegion(int(types.LifeCycleDefault))
 	if err != nil {
 		return err
 	}

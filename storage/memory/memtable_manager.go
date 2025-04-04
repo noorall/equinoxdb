@@ -108,8 +108,10 @@ func (mm *MemManager) DeleteRange(keys [][]byte, min, max int64) {
 	mm.Lock()
 	defer mm.Unlock()
 	mm.mem.DeleteRange(keys, min, max)
+	_ = mm.mem.wal.RemoveRange(keys, min, max)
 	for _, m := range mm.imm {
 		m.DeleteRange(keys, min, max)
+		_ = m.wal.RemoveRange(keys, min, max)
 	}
 	mm.MemoryMetrics.MemBytes.Set(float64(mm.mem.Cache.Size()))
 }
@@ -122,15 +124,17 @@ func (mm *MemManager) Values(key []byte) types.Values {
 	var entries []*types.Entry
 
 	e := mm.mem.Cache.Get(key)
-	sz += e.Size()
-	e.Deduplicate()
-	entries = append(entries, e)
+	if e != nil {
+		sz += e.Count()
+		e.Deduplicate()
+		entries = append(entries, e)
+	}
 
 	for _, m := range mm.imm {
 		ie := m.Cache.Get(key)
 		if ie != nil {
 			ie.Deduplicate()
-			sz += ie.Size()
+			sz += ie.Count()
 			entries = append(entries, ie)
 		}
 	}

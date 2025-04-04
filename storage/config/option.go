@@ -63,6 +63,7 @@ type Option struct {
 
 	EnableMetrics bool
 	MetricPort    int
+	IsTestDB      bool
 
 	Logger *zap.Logger
 }

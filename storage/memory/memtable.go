@@ -25,7 +25,6 @@ import (
 	"equinox/storage/store"
 	"equinox/storage/types"
 	"fmt"
-	"log"
 	"math"
 	"os"
 )
@@ -157,11 +156,6 @@ func (m *MemTable) restoreFromWAL() error {
 	for r.Next() {
 		entry, err := r.Read()
 		if err != nil {
-			n := r.Count()
-			log.Printf("file corrupt, errs: %v", err)
-			if err = m.wal.Truncate(n); err != nil {
-				return err
-			}
 			break
 		}
 
@@ -177,5 +171,6 @@ func (m *MemTable) restoreFromWAL() error {
 		}
 	}
 
-	return m.wal.Truncate(r.Count())
+	m.wal.Pos = uint32(r.Count())
+	return nil
 }

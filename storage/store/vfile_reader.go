@@ -19,6 +19,7 @@
 package store
 
 import (
+	"encoding/binary"
 	"fmt"
 	"hash/crc32"
 )
@@ -56,6 +57,16 @@ func (r *ValueFileIterator) ReadHeader() *VFileHeader {
 func (r *ValueFileIterator) ReadKey() []byte {
 	start := r.offset - r.lenValueBlock
 	return r.f.Data[start : start+uint32(r.header.KeyLen)]
+}
+
+func (r *ValueFileIterator) IsValidateBlock() bool {
+	if r.offset > r.f.size {
+		return false
+	}
+	start := r.offset - r.lenValueBlock + uint32(r.header.KeyLen)
+	crc := binary.BigEndian.Uint32(r.f.Data[start : start+crc32.Size])
+	check := crc32.ChecksumIEEE(r.f.Data[start+crc32.Size : r.offset])
+	return crc == check
 }
 
 func (r *ValueFileIterator) ReadValueBlock() []byte {

@@ -19,7 +19,7 @@ func (e *Engine) buildFloatArrayCursor(key []byte, min, max int64, asc bool) cur
 		return cur
 	} else {
 		cur := cursor.NewFloatArrayDescendingCursor()
-		cur.Reset(min, max, cacheValues, keyCursor)
+		cur.Reset(max, min, cacheValues, keyCursor)
 		return cur
 	}
 }
@@ -34,7 +34,7 @@ func (e *Engine) buildIntegerArrayCursor(key []byte, min, max int64, asc bool) c
 		return cur
 	} else {
 		cur := cursor.NewIntegerArrayDescendingCursor()
-		cur.Reset(min, max, cacheValues, keyCursor)
+		cur.Reset(max, min, cacheValues, keyCursor)
 		return cur
 	}
 }
@@ -49,7 +49,7 @@ func (e *Engine) buildUnsignedArrayCursor(key []byte, min, max int64, asc bool) 
 		return cur
 	} else {
 		cur := cursor.NewUnsignedArrayDescendingCursor()
-		cur.Reset(min, max, cacheValues, keyCursor)
+		cur.Reset(max, min, cacheValues, keyCursor)
 		return cur
 	}
 }
@@ -64,7 +64,7 @@ func (e *Engine) buildStringArrayCursor(key []byte, min, max int64, asc bool) cu
 		return cur
 	} else {
 		cur := cursor.NewStringArrayDescendingCursor()
-		cur.Reset(min, max, cacheValues, keyCursor)
+		cur.Reset(max, min, cacheValues, keyCursor)
 		return cur
 	}
 }
@@ -79,7 +79,7 @@ func (e *Engine) buildBooleanArrayCursor(key []byte, min, max int64, asc bool) c
 		return cur
 	} else {
 		cur := cursor.NewBooleanArrayDescendingCursor()
-		cur.Reset(min, max, cacheValues, keyCursor)
+		cur.Reset(max, min, cacheValues, keyCursor)
 		return cur
 	}
 }

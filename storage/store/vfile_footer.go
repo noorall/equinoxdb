@@ -55,5 +55,8 @@ func (f *VFileHeader) UnmarshalBinary(b []byte) error {
 	f.MaxTime = int64(binary.BigEndian.Uint64(b[16:24]))
 	f.DataLen = binary.BigEndian.Uint32(b[24:28])
 	f.KeyLen = binary.BigEndian.Uint16(b[28:30])
+	if f.KeyLen == 0 && f.MinTime == 0 && f.MaxTime == 0 && f.DataLen == 0 && f.KeyHash == 0 {
+		return fmt.Errorf("unmarshalBinary: invalid empty header")
+	}
 	return nil
 }

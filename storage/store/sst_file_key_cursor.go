@@ -20,7 +20,6 @@ package store
 
 import (
 	"context"
-	"equinox/pkg/metrics"
 	"equinox/storage/types"
 	"sort"
 )
@@ -38,7 +37,6 @@ type KeyCursor struct {
 	buf     []types.Value
 
 	ctx context.Context
-	col *metrics.Group
 
 	// pos is the index within seeks.  Based on ascending, it will increment or
 	// decrement through the size of seeks slice.
@@ -98,7 +96,6 @@ func newKeyCursor(ctx context.Context, fs *FileStore, key []byte, t int64, ascen
 		key:       key,
 		seeks:     fs.locations(key, t, ascending),
 		ctx:       ctx,
-		col:       metrics.GroupFromContext(ctx),
 		ascending: ascending,
 	}
 

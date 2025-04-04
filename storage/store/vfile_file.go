@@ -211,3 +211,10 @@ func (f *ValueFile) clearEntryHeader() {
 		h[i] = 0x0
 	}
 }
+
+func (f *ValueFile) restoreValueFile() {
+	r := NewValueFileIterator(f)
+	for r.Next() == nil && r.IsValidateBlock() {
+	}
+	f.pos = r.offset
+}
