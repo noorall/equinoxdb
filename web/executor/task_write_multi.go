@@ -91,15 +91,7 @@ func writeChunk(ctx context.Context, filename string, start, end int64, wg *sync
 	}
 }
 
-func RunMultiWriteTask(ctx context.Context, task *common.Task, db *gorm.DB) {
-	var e *storage.Engine
-	if task.Type == 0 {
-		e = getTestDBNonSep()
-	} else {
-		e = getTestDB()
-	}
-	_ = e.Open(context.Background())
-
+func RunMultiWriteTaskWithEngine(ctx context.Context, task *common.Task, db *gorm.DB, e *storage.Engine) {
 	info, _ := os.Stat(task.DataPath)
 	fileSize := info.Size()
 
@@ -137,7 +129,6 @@ func RunMultiWriteTask(ctx context.Context, task *common.Task, db *gorm.DB) {
 	}()
 	wg.Wait()
 	close(stop)
-	_ = e.Close()
 	err := db.First(task, task.ID).Error
 	if err == nil {
 		task.WriteDuration = time.Since(s).Seconds()
@@ -150,4 +141,16 @@ func RunMultiWriteTask(ctx context.Context, task *common.Task, db *gorm.DB) {
 		task.FinishedAt = time.Now()
 		db.Save(task)
 	}
+}
+
+func RunMultiWriteTask(ctx context.Context, task *common.Task, db *gorm.DB) {
+	var e *storage.Engine
+	if task.Type == 0 {
+		e = getTestDBNonSep()
+	} else {
+		e = getTestDB()
+	}
+	_ = e.Open(context.Background())
+	RunMultiWriteTaskWithEngine(ctx, task, db, e)
+	_ = e.Close()
 }

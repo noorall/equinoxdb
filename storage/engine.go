@@ -18,6 +18,8 @@ import (
 	"go.uber.org/zap"
 	"math"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -135,7 +137,8 @@ func (e *Engine) Open(ctx context.Context) error {
 	if e.option.EnableMetrics {
 		e.metricServer = metric.RunMetricServer(e.logger, e.option.MetricPort)
 	}
-	return nil
+	e.mm.Open()
+	return e.cleanupTempTSMFiles()
 }
 
 func (e *Engine) Close() error {
@@ -374,4 +377,18 @@ func (e *Engine) GetWrittenSize() int64 {
 // keyCursor returns a store.KeyCursor for the given key starting at time t.
 func (e *Engine) keyCursor(key []byte, t int64, ascending bool) *store.KeyCursor {
 	return e.filestore.KeyCursor(context.Background(), key, t, ascending)
+}
+
+func (e *Engine) cleanupTempTSMFiles() error {
+	files, err := filepath.Glob(filepath.Join(e.option.Dir, fmt.Sprintf("*.%s", store.TmpSSTFileExtension)))
+	if err != nil {
+		return fmt.Errorf("error getting compaction temp files: %s", err.Error())
+	}
+
+	for _, f := range files {
+		if err := os.Remove(f); err != nil {
+			return fmt.Errorf("error removing temp compaction files: %v", err)
+		}
+	}
+	return nil
 }

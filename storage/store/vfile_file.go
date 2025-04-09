@@ -126,10 +126,9 @@ func (f *ValueFile) WriteBlock(key []byte, minTime, maxTime int64, block []byte)
 func (f *ValueFile) MarkAsDelete(key []byte, minTime, maxTime int64, sync bool) error {
 	f.cache.AddMulti(string(key), []TimeRange{{minTime, maxTime}})
 	if sync {
-		return f.tombstoner.writeTombstone([]Tombstone{{Max: maxTime, Min: minTime, Key: key}})
+		return f.tombstoner.AddRange([][]byte{key}, minTime, maxTime)
 	} else {
-		go f.tombstoner.writeTombstone([]Tombstone{{Max: maxTime, Min: minTime, Key: key}})
-		return nil
+		return f.tombstoner.AddRange([][]byte{key}, minTime, maxTime)
 	}
 }
 

@@ -173,7 +173,11 @@ func saveTask(c *gin.Context) {
 	db.Save(&task)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancels.Store(task.ID, cancel)
-	go executor.RunMultiWriteTask(ctx, &task, db)
+	if task.Type == 2 {
+		go executor.RunMultiWriteTaskWithEngine(ctx, &task, db, e)
+	} else {
+		go executor.RunMultiWriteTask(ctx, &task, db)
+	}
 	c.Redirect(http.StatusSeeOther, "/")
 }
 

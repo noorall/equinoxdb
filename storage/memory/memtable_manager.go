@@ -75,6 +75,13 @@ func NewMemManager(opt config.Option, logger *zap.Logger) (*MemManager, error) {
 	return mm, nil
 }
 
+func (mm *MemManager) Open() {
+	for _, m := range mm.imm {
+		mm.wg.Add(1)
+		mm.flushCh <- m
+	}
+}
+
 func (mm *MemManager) Close() {
 	mm.wg.Wait()
 	mm.Lock()

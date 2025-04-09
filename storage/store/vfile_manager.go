@@ -130,6 +130,7 @@ func NewVFileManager(option config.Option, lifeCycle int, stats *metric.ValueFil
 	}
 
 	last.restoreValueFile()
+	v.writableLogOffset = last.size
 
 	v.stats.AddSize(int64(last.pos))
 
