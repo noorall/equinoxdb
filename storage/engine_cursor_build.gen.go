@@ -12,12 +12,13 @@ import (
 // buildFloatArrayCursor creates an array cursor for a float field.
 func (e *Engine) buildFloatArrayCursor(key []byte, min, max int64, asc bool) cursor.FloatArrayCursor {
 	cacheValues := e.mm.Values(key)
-	keyCursor := e.keyCursor(key, min, asc)
 	if asc {
+		keyCursor := e.keyCursor(key, min, asc)
 		cur := cursor.NewFloatArrayAscendingCursor()
 		cur.Reset(min, max, cacheValues, keyCursor)
 		return cur
 	} else {
+		keyCursor := e.keyCursor(key, max, asc)
 		cur := cursor.NewFloatArrayDescendingCursor()
 		cur.Reset(max, min, cacheValues, keyCursor)
 		return cur
@@ -27,12 +28,13 @@ func (e *Engine) buildFloatArrayCursor(key []byte, min, max int64, asc bool) cur
 // buildIntegerArrayCursor creates an array cursor for a integer field.
 func (e *Engine) buildIntegerArrayCursor(key []byte, min, max int64, asc bool) cursor.IntegerArrayCursor {
 	cacheValues := e.mm.Values(key)
-	keyCursor := e.keyCursor(key, min, asc)
 	if asc {
+		keyCursor := e.keyCursor(key, min, asc)
 		cur := cursor.NewIntegerArrayAscendingCursor()
 		cur.Reset(min, max, cacheValues, keyCursor)
 		return cur
 	} else {
+		keyCursor := e.keyCursor(key, max, asc)
 		cur := cursor.NewIntegerArrayDescendingCursor()
 		cur.Reset(max, min, cacheValues, keyCursor)
 		return cur
@@ -42,12 +44,13 @@ func (e *Engine) buildIntegerArrayCursor(key []byte, min, max int64, asc bool) c
 // buildUnsignedArrayCursor creates an array cursor for a unsigned field.
 func (e *Engine) buildUnsignedArrayCursor(key []byte, min, max int64, asc bool) cursor.UnsignedArrayCursor {
 	cacheValues := e.mm.Values(key)
-	keyCursor := e.keyCursor(key, min, asc)
 	if asc {
+		keyCursor := e.keyCursor(key, min, asc)
 		cur := cursor.NewUnsignedArrayAscendingCursor()
 		cur.Reset(min, max, cacheValues, keyCursor)
 		return cur
 	} else {
+		keyCursor := e.keyCursor(key, max, asc)
 		cur := cursor.NewUnsignedArrayDescendingCursor()
 		cur.Reset(max, min, cacheValues, keyCursor)
 		return cur
@@ -57,12 +60,13 @@ func (e *Engine) buildUnsignedArrayCursor(key []byte, min, max int64, asc bool) 
 // buildStringArrayCursor creates an array cursor for a string field.
 func (e *Engine) buildStringArrayCursor(key []byte, min, max int64, asc bool) cursor.StringArrayCursor {
 	cacheValues := e.mm.Values(key)
-	keyCursor := e.keyCursor(key, min, asc)
 	if asc {
+		keyCursor := e.keyCursor(key, min, asc)
 		cur := cursor.NewStringArrayAscendingCursor()
 		cur.Reset(min, max, cacheValues, keyCursor)
 		return cur
 	} else {
+		keyCursor := e.keyCursor(key, max, asc)
 		cur := cursor.NewStringArrayDescendingCursor()
 		cur.Reset(max, min, cacheValues, keyCursor)
 		return cur
@@ -72,12 +76,13 @@ func (e *Engine) buildStringArrayCursor(key []byte, min, max int64, asc bool) cu
 // buildBooleanArrayCursor creates an array cursor for a boolean field.
 func (e *Engine) buildBooleanArrayCursor(key []byte, min, max int64, asc bool) cursor.BooleanArrayCursor {
 	cacheValues := e.mm.Values(key)
-	keyCursor := e.keyCursor(key, min, asc)
 	if asc {
+		keyCursor := e.keyCursor(key, min, asc)
 		cur := cursor.NewBooleanArrayAscendingCursor()
 		cur.Reset(min, max, cacheValues, keyCursor)
 		return cur
 	} else {
+		keyCursor := e.keyCursor(key, max, asc)
 		cur := cursor.NewBooleanArrayDescendingCursor()
 		cur.Reset(max, min, cacheValues, keyCursor)
 		return cur

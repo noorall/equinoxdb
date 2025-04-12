@@ -52,6 +52,8 @@ func (m *mmapAccessor) readFloatArrayBlock(entry *IndexEntry, values *types.Floa
 
 	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
+		values.Timestamps = values.Timestamps[:0]
+		values.Values = values.Values[:0]
 		for _, dataBlock := range dataBlocks {
 			var tmp types.FloatArray
 			err = codec.DecodeFloatArrayBlock(dataBlock, &tmp)
@@ -109,6 +111,8 @@ func (m *mmapAccessor) readIntegerArrayBlock(entry *IndexEntry, values *types.In
 
 	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
+		values.Timestamps = values.Timestamps[:0]
+		values.Values = values.Values[:0]
 		for _, dataBlock := range dataBlocks {
 			var tmp types.IntegerArray
 			err = codec.DecodeIntegerArrayBlock(dataBlock, &tmp)
@@ -166,6 +170,8 @@ func (m *mmapAccessor) readUnsignedArrayBlock(entry *IndexEntry, values *types.U
 
 	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
+		values.Timestamps = values.Timestamps[:0]
+		values.Values = values.Values[:0]
 		for _, dataBlock := range dataBlocks {
 			var tmp types.UnsignedArray
 			err = codec.DecodeUnsignedArrayBlock(dataBlock, &tmp)
@@ -223,6 +229,8 @@ func (m *mmapAccessor) readStringArrayBlock(entry *IndexEntry, values *types.Str
 
 	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
+		values.Timestamps = values.Timestamps[:0]
+		values.Values = values.Values[:0]
 		for _, dataBlock := range dataBlocks {
 			var tmp types.StringArray
 			err = codec.DecodeStringArrayBlock(dataBlock, &tmp)
@@ -280,6 +288,8 @@ func (m *mmapAccessor) readBooleanArrayBlock(entry *IndexEntry, values *types.Bo
 
 	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
+		values.Timestamps = values.Timestamps[:0]
+		values.Values = values.Values[:0]
 		for _, dataBlock := range dataBlocks {
 			var tmp types.BooleanArray
 			err = codec.DecodeBooleanArrayBlock(dataBlock, &tmp)

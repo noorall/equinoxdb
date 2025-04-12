@@ -9,12 +9,13 @@ import (
 // build{{.Name}}ArrayCursor creates an array cursor for a {{.name}} field.
 func (e *Engine) build{{.Name}}ArrayCursor(key []byte, min, max int64, asc bool) cursor.{{.Name}}ArrayCursor {
 	cacheValues := e.mm.Values(key)
-	keyCursor := e.keyCursor(key, min, asc)
 	if asc {
+		keyCursor := e.keyCursor(key, min, asc)
 		cur := cursor.New{{.Name}}ArrayAscendingCursor()
 		cur.Reset(min, max, cacheValues, keyCursor)
 		return cur
 	} else {
+		keyCursor := e.keyCursor(key, max, asc)
 		cur := cursor.New{{.Name}}ArrayDescendingCursor()
 		cur.Reset(max, min, cacheValues, keyCursor)
 		return cur

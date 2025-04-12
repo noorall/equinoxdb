@@ -77,8 +77,8 @@ func parseSelect(sql string) (*ParsedSelect, error) {
 	table := matches[2]
 
 	// 初始化默认值
-	start := int64(math.MinInt64)
-	end := int64(math.MaxInt64)
+	start := int64(math.MinInt64 + 2)
+	end := int64(math.MaxInt64 - 1)
 	limit := 10
 
 	// 处理 where 子句

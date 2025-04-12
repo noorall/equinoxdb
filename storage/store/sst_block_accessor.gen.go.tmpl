@@ -16,7 +16,7 @@ func (m *mmapAccessor) read{{.Name}}Block(entry *IndexEntry, values *[]types.{{.
 	}
 
 	var a []types.{{.Name}}Value
-	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])
+	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
 		for _, dataBlock := range dataBlocks {
 			*values, err = codec.Decode{{.Name}}Block(dataBlock, values)
@@ -46,8 +46,10 @@ func (m *mmapAccessor) read{{.Name}}ArrayBlock(entry *IndexEntry, values *types.
 		return ErrSSTClosed
 	}
 
-	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4 : entry.Offset+int64(entry.Size)])
+	dataBlocks, err := m.vr.ReadDataBlocks(m.b[entry.Offset+4:entry.Offset+int64(entry.Size)], false, nil)
 	if err == nil {
+	    values.Timestamps = values.Timestamps[:0]
+	    values.Values = values.Values[:0]
 		for _, dataBlock := range dataBlocks {
 			var tmp types.{{.Name}}Array
 			err = codec.Decode{{.Name}}ArrayBlock(dataBlock, &tmp)
