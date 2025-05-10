@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gin-contrib/sessions/cookie"
+	"gorm.io/gorm/logger"
 	"html/template"
 	"io"
 	"log"
@@ -73,7 +74,7 @@ func main() {
 		gin.DefaultWriter = io.Discard
 	}
 	var err error
-	db, err = gorm.Open(sqlite.Open("tasks.db"), &gorm.Config{})
+	db, err = gorm.Open(sqlite.Open("tasks.db"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	if err != nil {
 		panic("failed to connect database")
 	}

@@ -92,12 +92,12 @@
         打开命令行
     </button>
 
-    <!-- 悬浮命令行窗口 -->
-    <div id="terminal" class="fixed bottom-20 right-6 w-[800px] h-96 bg-black text-green-400 p-4 rounded-lg shadow-2xl font-mono hidden flex flex-col z-50 cursor-move"
-         onmousedown="startDrag(event)" onmouseup="stopDrag()" onmousemove="dragTerminal(event)">
+    <div id="terminal"
+         class="fixed bottom-20 right-6 w-[800px] h-96 bg-black text-green-400 p-4 rounded-lg shadow-2xl font-mono hidden flex flex-col z-50"
+         style="min-width: 300px; min-height: 200px;">
 
-        <!-- 顶部标题栏和关闭按钮 -->
-        <div class="flex justify-between items-center mb-2 text-white select-none">
+        <!-- 顶部标题栏 -->
+        <div class="flex justify-between items-center mb-2 text-white select-none cursor-move" id="terminal-header">
             <span class="text-sm">🖥️ EquinoxDB 命令行</span>
             <button onclick="toggleTerminal()" class="text-red-400 hover:text-red-600 text-xl">&times;</button>
         </div>
@@ -117,6 +117,15 @@
                    onkeydown="handleInput(event)" />
             <span id="loading-spinner" class="ml-2 hidden animate-spin text-white">⏳</span>
         </div>
+        <!-- 8个边角拖动柄 -->
+        <div class="resizer resize-top"></div>
+        <div class="resizer resize-right"></div>
+        <div class="resizer resize-bottom"></div>
+        <div class="resizer resize-left"></div>
+        <div class="resizer resize-top-left"></div>
+        <div class="resizer resize-top-right"></div>
+        <div class="resizer resize-bottom-left"></div>
+        <div class="resizer resize-bottom-right"></div>
     </div>
 </div>
 <script>
@@ -378,6 +387,127 @@
         term.style.top = `${e.clientY - dragOffsetY}px`;
         term.style.right = "auto";
         term.style.bottom = "auto";
+    }
+</script>
+<style>
+    .resizer {
+        position: absolute;
+        z-index: 60;
+    }
+
+    /* 四边 */
+    .resize-top {
+        top: -2px; left: 0; right: 0;
+        height: 6px; cursor: n-resize;
+    }
+    .resize-right {
+        top: 0; right: -2px; bottom: 0;
+        width: 6px; cursor: e-resize;
+    }
+    .resize-bottom {
+        bottom: -2px; left: 0; right: 0;
+        height: 6px; cursor: s-resize;
+    }
+    .resize-left {
+        top: 0; left: -2px; bottom: 0;
+        width: 6px; cursor: w-resize;
+    }
+
+    /* 四角 */
+    .resize-top-left {
+        top: -2px; left: -2px;
+        width: 12px; height: 12px;
+        cursor: nw-resize;
+    }
+    .resize-top-right {
+        top: -2px; right: -2px;
+        width: 12px; height: 12px;
+        cursor: ne-resize;
+    }
+    .resize-bottom-left {
+        bottom: -2px; left: -2px;
+        width: 12px; height: 12px;
+        cursor: sw-resize;
+    }
+    .resize-bottom-right {
+        bottom: -2px; right: -2px;
+        width: 12px; height: 12px;
+        cursor: se-resize;
+    }
+</style>
+
+<script>
+    const terminal = document.getElementById('terminal');
+    const resizers = terminal.querySelectorAll('.resizer');
+
+    let isResizing = false;
+    let currentResizer;
+    let startX, startY, startWidth, startHeight, startTop, startLeft;
+
+    resizers.forEach(resizer => {
+        resizer.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+            isResizing = true;
+            currentResizer = resizer;
+            const rect = terminal.getBoundingClientRect();
+            startX = e.clientX;
+            startY = e.clientY;
+            startWidth = rect.width;
+            startHeight = rect.height;
+            startTop = rect.top;
+            startLeft = rect.left;
+
+            document.addEventListener('mousemove', resize);
+            document.addEventListener('mouseup', stopResize);
+        });
+    });
+
+    function resize(e) {
+        if (!isResizing) return;
+
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+
+        if (currentResizer.classList.contains('resize-right')) {
+            terminal.style.width = startWidth + dx + 'px';
+        }
+        if (currentResizer.classList.contains('resize-left')) {
+            terminal.style.width = startWidth - dx + 'px';
+            terminal.style.left = startLeft + dx + 'px';
+        }
+        if (currentResizer.classList.contains('resize-bottom')) {
+            terminal.style.height = startHeight + dy + 'px';
+        }
+        if (currentResizer.classList.contains('resize-top')) {
+            terminal.style.height = startHeight - dy + 'px';
+            terminal.style.top = startTop + dy + 'px';
+        }
+        if (currentResizer.classList.contains('resize-top-left')) {
+            terminal.style.width = startWidth - dx + 'px';
+            terminal.style.left = startLeft + dx + 'px';
+            terminal.style.height = startHeight - dy + 'px';
+            terminal.style.top = startTop + dy + 'px';
+        }
+        if (currentResizer.classList.contains('resize-top-right')) {
+            terminal.style.width = startWidth + dx + 'px';
+            terminal.style.height = startHeight - dy + 'px';
+            terminal.style.top = startTop + dy + 'px';
+        }
+        if (currentResizer.classList.contains('resize-bottom-left')) {
+            terminal.style.width = startWidth - dx + 'px';
+            terminal.style.left = startLeft + dx + 'px';
+            terminal.style.height = startHeight + dy + 'px';
+        }
+        if (currentResizer.classList.contains('resize-bottom-right')) {
+            terminal.style.width = startWidth + dx + 'px';
+            terminal.style.height = startHeight + dy + 'px';
+        }
+    }
+
+    function stopResize() {
+        isResizing = false;
+        document.removeEventListener('mousemove', resize);
+        document.removeEventListener('mouseup', stopResize);
     }
 </script>
 </body>
