@@ -88,6 +88,7 @@ func (f *ValueFile) WriteBlock(key []byte, minTime, maxTime int64, block []byte)
 
 	if int(newPos) >= len(f.Data) {
 		if err := f.Truncate(int64(newPos)); err != nil {
+			atomic.AddUint32(&f.pos, ^uint32(n-1))
 			return 0, err
 		}
 	}

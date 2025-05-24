@@ -70,9 +70,9 @@
             </td>
             <td class="p-3 space-x-2">
                 {{if eq .Type 0}}
-                <a id="view-task-link-{{.ID}}" href="http://localhost:3000/public-dashboards/924c2fa3b8ae457095656e9db4e70c53?from={{.CreatedAt | unixMilli}}{{if .Finished }}&to={{.FinishedAt | unixMilli}}{{end}}" target="_blank" class="text-blue-600 hover:underline">查看</a>
+                <a id="view-task-link-{{.ID}}" href="http://localhost:3000/public-dashboards/924c2fa3b8ae457095656e9db4e70c53?&refresh=auto&from={{.CreatedAt | unixMilli}}{{if .Finished }}&to={{.FinishedAt | unixMilli}}{{end}}" target="_blank" class="text-blue-600 hover:underline">查看</a>
                 {{else}}
-                <a id="view-task-link-{{.ID}}" href="http://localhost:3000/public-dashboards/2ad7bfa2405a4bba8be721752fbddbb3?from={{.CreatedAt | unixMilli}}{{if .Finished }}&to={{.FinishedAt | unixMilli}}{{end}}" target="_blank" class="text-blue-600 hover:underline">查看</a>
+                <a id="view-task-link-{{.ID}}" href="http://localhost:3000/public-dashboards/856b5d408bf9459195507fdbe54d12d0?&refresh=auto&from={{.CreatedAt | unixMilli}}{{if .Finished }}&to={{.FinishedAt | unixMilli}}{{end}}" target="_blank" class="text-blue-600 hover:underline">查看</a>
                 {{end}}
                 {{if .Finished}}
                 <button id="stop-task-btn-{{.ID}}" class="text-gray-400 cursor-not-allowed" disabled>终止</button>
@@ -150,6 +150,7 @@
                 // 使用 data.task_enabled 而不是未定义的 task_enabled
                 if (data.is_stopped) {
                     row.querySelector(".status-finished").textContent = "已终止";
+                    row.querySelector(".status-finished-at").textContent = "已终止"
                 }else if(data.is_finished){
                     row.querySelector(".status-finished").textContent = "执行完成";
                     row.querySelector(".status-finished-at").textContent = data.finished_at;
@@ -299,6 +300,14 @@
             const cmd = input.value.trim();
             if (!cmd) return;
 
+            if (cmd === "clean") {
+                document.getElementById("terminal-content").innerHTML = "";
+                history = [];
+                saveHistory();
+                input.value = "";
+                return;
+            }
+
             appendToTerminal(cmd, true);
             input.value = "";
             historyIndex = -1;
@@ -363,152 +372,133 @@
             input.focus();
         }
     }
-
-    // 拖动窗口逻辑（保持不变）
-    let isDragging = false;
-    let dragOffsetX = 0;
-    let dragOffsetY = 0;
-
-    function startDrag(e) {
-        const term = document.getElementById("terminal");
-        isDragging = true;
-        dragOffsetX = e.clientX - term.offsetLeft;
-        dragOffsetY = e.clientY - term.offsetTop;
-    }
-
-    function stopDrag() {
-        isDragging = false;
-    }
-
-    function dragTerminal(e) {
-        if (!isDragging) return;
-        const term = document.getElementById("terminal");
-        term.style.left = `${e.clientX - dragOffsetX}px`;
-        term.style.top = `${e.clientY - dragOffsetY}px`;
-        term.style.right = "auto";
-        term.style.bottom = "auto";
-    }
 </script>
+
 <style>
     .resizer {
         position: absolute;
+        width: 10px;
+        height: 10px;
+        background: transparent;
         z-index: 60;
     }
 
-    /* 四边 */
-    .resize-top {
-        top: -2px; left: 0; right: 0;
-        height: 6px; cursor: n-resize;
-    }
-    .resize-right {
-        top: 0; right: -2px; bottom: 0;
-        width: 6px; cursor: e-resize;
-    }
-    .resize-bottom {
-        bottom: -2px; left: 0; right: 0;
-        height: 6px; cursor: s-resize;
-    }
-    .resize-left {
-        top: 0; left: -2px; bottom: 0;
-        width: 6px; cursor: w-resize;
-    }
+    .resize-top    { top: -5px; left: 50%; cursor: ns-resize; transform: translateX(-50%); height: 10px; width: 100%; }
+    .resize-right  { top: 50%; right: -5px; cursor: ew-resize; transform: translateY(-50%); width: 10px; height: 100%; }
+    .resize-bottom { bottom: -5px; left: 50%; cursor: ns-resize; transform: translateX(-50%); height: 10px; width: 100%; }
+    .resize-left   { top: 50%; left: -5px; cursor: ew-resize; transform: translateY(-50%); width: 10px; height: 100%; }
 
-    /* 四角 */
-    .resize-top-left {
-        top: -2px; left: -2px;
-        width: 12px; height: 12px;
-        cursor: nw-resize;
-    }
-    .resize-top-right {
-        top: -2px; right: -2px;
-        width: 12px; height: 12px;
-        cursor: ne-resize;
-    }
-    .resize-bottom-left {
-        bottom: -2px; left: -2px;
-        width: 12px; height: 12px;
-        cursor: sw-resize;
-    }
-    .resize-bottom-right {
-        bottom: -2px; right: -2px;
-        width: 12px; height: 12px;
-        cursor: se-resize;
-    }
+    .resize-top-left     { top: -5px; left: -5px; cursor: nwse-resize; }
+    .resize-top-right    { top: -5px; right: -5px; cursor: nesw-resize; }
+    .resize-bottom-left  { bottom: -5px; left: -5px; cursor: nesw-resize; }
+    .resize-bottom-right { bottom: -5px; right: -5px; cursor: nwse-resize; }
 </style>
 
 <script>
-    const terminal = document.getElementById('terminal');
-    const resizers = terminal.querySelectorAll('.resizer');
-
+    // 全局状态互斥
+    let isDragging = false;
     let isResizing = false;
-    let currentResizer;
-    let startX, startY, startWidth, startHeight, startTop, startLeft;
 
-    resizers.forEach(resizer => {
-        resizer.addEventListener('mousedown', function (e) {
-            e.preventDefault();
-            isResizing = true;
-            currentResizer = resizer;
-            const rect = terminal.getBoundingClientRect();
-            startX = e.clientX;
-            startY = e.clientY;
-            startWidth = rect.width;
-            startHeight = rect.height;
-            startTop = rect.top;
-            startLeft = rect.left;
+    // 拖动 terminal-header 移动整个窗口
+    (() => {
+        const terminal = document.getElementById("terminal");
+        const header = document.getElementById("terminal-header");
+        let offsetX = 0, offsetY = 0;
 
-            document.addEventListener('mousemove', resize);
-            document.addEventListener('mouseup', stopResize);
+        header.addEventListener("mousedown", (e) => {
+            if (isResizing) return;
+            isDragging = true;
+            offsetX = e.clientX - terminal.offsetLeft;
+            offsetY = e.clientY - terminal.offsetTop;
+            document.body.style.userSelect = "none";
         });
-    });
 
-    function resize(e) {
-        if (!isResizing) return;
+        document.addEventListener("mousemove", (e) => {
+            if (isDragging) {
+                terminal.style.left = `${e.clientX - offsetX}px`;
+                terminal.style.top = `${e.clientY - offsetY}px`;
+                terminal.style.right = "auto";
+                terminal.style.bottom = "auto";
+                terminal.style.position = "fixed";
+            }
+        });
 
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
+        document.addEventListener("mouseup", () => {
+            isDragging = false;
+            document.body.style.userSelect = "auto";
+        });
+    })();
 
-        if (currentResizer.classList.contains('resize-right')) {
-            terminal.style.width = startWidth + dx + 'px';
-        }
-        if (currentResizer.classList.contains('resize-left')) {
-            terminal.style.width = startWidth - dx + 'px';
-            terminal.style.left = startLeft + dx + 'px';
-        }
-        if (currentResizer.classList.contains('resize-bottom')) {
-            terminal.style.height = startHeight + dy + 'px';
-        }
-        if (currentResizer.classList.contains('resize-top')) {
-            terminal.style.height = startHeight - dy + 'px';
-            terminal.style.top = startTop + dy + 'px';
-        }
-        if (currentResizer.classList.contains('resize-top-left')) {
-            terminal.style.width = startWidth - dx + 'px';
-            terminal.style.left = startLeft + dx + 'px';
-            terminal.style.height = startHeight - dy + 'px';
-            terminal.style.top = startTop + dy + 'px';
-        }
-        if (currentResizer.classList.contains('resize-top-right')) {
-            terminal.style.width = startWidth + dx + 'px';
-            terminal.style.height = startHeight - dy + 'px';
-            terminal.style.top = startTop + dy + 'px';
-        }
-        if (currentResizer.classList.contains('resize-bottom-left')) {
-            terminal.style.width = startWidth - dx + 'px';
-            terminal.style.left = startLeft + dx + 'px';
-            terminal.style.height = startHeight + dy + 'px';
-        }
-        if (currentResizer.classList.contains('resize-bottom-right')) {
-            terminal.style.width = startWidth + dx + 'px';
-            terminal.style.height = startHeight + dy + 'px';
-        }
-    }
+    // 拖动 resizer 改变 terminal 尺寸
+    (() => {
+        const terminal = document.getElementById("terminal");
+        const resizers = terminal.querySelectorAll(".resizer");
 
-    function stopResize() {
-        isResizing = false;
-        document.removeEventListener('mousemove', resize);
-        document.removeEventListener('mouseup', stopResize);
-    }
+        let currentResizer = null;
+        let startX, startY;
+        let startWidth, startHeight;
+        let startLeft, startTop;
+
+        resizers.forEach(resizer => {
+            resizer.addEventListener("mousedown", (e) => {
+                if (isDragging) return;
+                isResizing = true;
+                currentResizer = resizer;
+                startX = e.clientX;
+                startY = e.clientY;
+                startWidth = terminal.offsetWidth;
+                startHeight = terminal.offsetHeight;
+                startLeft = terminal.offsetLeft;
+                startTop = terminal.offsetTop;
+                document.body.style.userSelect = "none";
+                e.preventDefault();
+            });
+        });
+
+        document.addEventListener("mousemove", (e) => {
+            if (!isResizing) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+
+            if (currentResizer.classList.contains("resize-right")) {
+                terminal.style.width = `${startWidth + dx}px`;
+            } else if (currentResizer.classList.contains("resize-bottom")) {
+                terminal.style.height = `${startHeight + dy}px`;
+            } else if (currentResizer.classList.contains("resize-bottom-right")) {
+                terminal.style.width = `${startWidth + dx}px`;
+                terminal.style.height = `${startHeight + dy}px`;
+            } else if (currentResizer.classList.contains("resize-left")) {
+                terminal.style.width = `${startWidth - dx}px`;
+                terminal.style.left = `${startLeft + dx}px`;
+            } else if (currentResizer.classList.contains("resize-top")) {
+                terminal.style.height = `${startHeight - dy}px`;
+                terminal.style.top = `${startTop + dy}px`;
+            } else if (currentResizer.classList.contains("resize-top-left")) {
+                terminal.style.width = `${startWidth - dx}px`;
+                terminal.style.left = `${startLeft + dx}px`;
+                terminal.style.height = `${startHeight - dy}px`;
+                terminal.style.top = `${startTop + dy}px`;
+            } else if (currentResizer.classList.contains("resize-top-right")) {
+                terminal.style.width = `${startWidth + dx}px`;
+                terminal.style.height = `${startHeight - dy}px`;
+                terminal.style.top = `${startTop + dy}px`;
+            } else if (currentResizer.classList.contains("resize-bottom-left")) {
+                terminal.style.width = `${startWidth - dx}px`;
+                terminal.style.left = `${startLeft + dx}px`;
+                terminal.style.height = `${startHeight + dy}px`;
+            }
+        });
+
+        document.addEventListener("mouseup", () => {
+            isResizing = false;
+            currentResizer = null;
+            document.body.style.userSelect = "auto";
+        });
+    })();
 </script>
+
+
+
+
 </body>
 </html>

@@ -25,7 +25,7 @@ import (
 )
 
 func getTestDB() *storage.Engine {
-	dir, _ := os.MkdirTemp("/Users/noorall/GolandProjects/equinox/benchmark/write/db", "equinox-test")
+	dir, _ := os.MkdirTemp("/Users/noorall/GolandProjects/equinox/data", "equinox-test")
 
 	options := config.NewOption()
 	options.Dir = dir
@@ -34,7 +34,7 @@ func getTestDB() *storage.Engine {
 }
 
 func getTestDBNonSep() *storage.Engine {
-	dir, _ := os.MkdirTemp("/Users/noorall/GolandProjects/equinox/benchmark/write/db", "equinox-test")
+	dir, _ := os.MkdirTemp("/Users/noorall/GolandProjects/equinox/data", "equinox-test")
 
 	options := config.NewOption()
 	options.SeparateEnabled = false

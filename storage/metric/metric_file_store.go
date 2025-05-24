@@ -31,6 +31,10 @@ func (f *FileStoreMetrics) AddTotalWritten(n int64) {
 	f.totalWritten.Add(float64(n))
 }
 
+func (f *FileStoreMetrics) SetTotalWritten(n int64) {
+	f.totalWritten.Set(float64(n))
+}
+
 func (f *FileStoreMetrics) SetSize(n int64) {
 	atomic.StoreInt64(&f.sizeAtomic, n)
 	f.size.Set(float64(n))

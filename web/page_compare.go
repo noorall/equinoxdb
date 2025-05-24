@@ -50,7 +50,7 @@ func compareTasks(c *gin.Context) {
 	var tasks []common.Task
 	if err := db.
 		Where("id IN ?", ids).
-		Order("thread ASC").
+		Order("thread DESC").
 		Order("type DESC").
 		Find(&tasks).Error; err != nil {
 		c.String(http.StatusInternalServerError, "查询失败")

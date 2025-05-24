@@ -167,6 +167,9 @@ func (e *Engine) Close() error {
 	e.logger.Info("starting value file region manager")
 	err = e.vFileRegionManager.Close()
 
+	e.filestore.Metric.SetTotalWritten(0)
+	e.mm.MemoryMetrics.TotalWritten.Set(0)
+	e.vFileRegionManager.Stats.SetTotalWritten(0)
 	return err
 }
 

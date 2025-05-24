@@ -160,9 +160,10 @@ func (v *VFileManager) WriteBlock(key []byte, minTime, maxTime int64, block []by
 		return block, err
 	}
 
-	atomic.AddUint32(&v.writableLogOffset, uint32(len(key)+4+len(block)+VFileHeaderSize))
-	v.stats.AddTotalWritten(int64(uint32(len(key) + 4 + len(block) + VFileHeaderSize)))
+	atomic.StoreUint32(&v.writableLogOffset, end)
 
+	v.stats.AddTotalWritten(int64(uint32(len(key) + 4 + len(block) + VFileHeaderSize)))
+	v.stats.AddSize(int64(uint32(len(key) + 4 + len(block) + VFileHeaderSize)))
 	buf := make([]byte, ValuePtrSize+1)
 	buf[0] = codec.WithPtrFlag(block[0])
 
@@ -310,6 +311,7 @@ func (v *VFileManager) createValueFile() (*ValueFile, error) {
 	atomic.StoreUint32(&v.writableLogOffset, 0)
 	v.numEntriesWritten = 0
 
+	v.stats.IncFiles()
 	return vf, nil
 }
 
@@ -324,6 +326,7 @@ func (v *VFileManager) deleteValueFile(vf *ValueFile) error {
 	err := vf.Delete()
 	if err == nil {
 		v.stats.DecFiles()
+		v.stats.AddSize(int64(-vf.size))
 	}
 	return err
 }
@@ -420,6 +423,7 @@ func (v *VFileManager) flush(vf *ValueFile) (*ValueFile, error) {
 	}()
 
 	newvf, err := v.createValueFile()
+
 	if err != nil {
 		return nil, err
 	}

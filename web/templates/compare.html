@@ -4,6 +4,7 @@
     <title>任务数据对比</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
 </head>
 <body class="bg-gray-100 p-6">
 <div class="container mx-auto">
@@ -24,6 +25,7 @@
 </div>
 
 <script>
+    Chart.register(ChartDataLabels);
     const barPercentage = 1.0  // 调整为更合适的宽度比例
     const categoryPercentage = 0.2
     const charts = {{.ChartsJson}}
@@ -51,23 +53,67 @@
     };
 
     charts.forEach(chart => {
-            const datasets = chart.Legends.map((legend, idx) => ({
+        const labels = Object.keys(chart.Values);  // ["任务A", "任务B", ...]
+        const allValues = Object.values(chart.Values);  // [[左,右], [左,右], ...]
+
+        const datasets = chart.Legends.map((legend, idx) => {
+            const data = allValues.map(v => v[idx]);
+            const dataset = {
                 label: legend,
-                data: Object.values(chart.Values).map(v => v[idx]),
-                backgroundColor: colorPalette[idx%20],  // 自动不同颜色
+                data: data,
+                backgroundColor: colorPalette[idx % 20],
                 barPercentage: barPercentage,
                 categoryPercentage: categoryPercentage
-            }));
-            new Chart(document.getElementById(chart.Id), {
-                type: 'bar',
-                data: {
-                    labels: Object.keys(chart.Values),
-                    datasets: datasets
+            };
+
+            // 左边柱子：加红色百分比标注
+            if (idx === 0 && chart.Legends.length === 2) {
+                dataset.datalabels = {
+                    anchor: 'end',        // 锚点放在柱子顶部
+                    align: 'top',         // 标签向上对齐
+                    offset: -4,            // 再往上推一点
+                    formatter: (value, context) => {
+                        const i = context.dataIndex;
+                        const rightVal = allValues[i][1]; // 右边的值
+                        if (rightVal === 0) return '';
+                        const delta = ((value - rightVal) / rightVal * 100);
+                        const sign = delta >= 0 ? '+' : '-';
+                        return `${sign}${Math.abs(delta).toFixed(1)}%`;
+                    },
+                    color: 'red',
+                    font: {
+                        weight: 'bold',
+                        size: 12
+                    },
+                    clamp: true,
+                    clip: false
+                };
+            }
+
+            return dataset;
+        });
+
+        new Chart(document.getElementById(chart.Id), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                ...commonOptions,
+                plugins: {
+                    datalabels: {
+                        display: (ctx) => ctx.datasetIndex === 0 // 只显示左柱子的标签
+                    }
                 },
-                options: commonOptions
-            });
-        }
-    )
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    });
 </script>
 
 </body>

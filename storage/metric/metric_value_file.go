@@ -37,6 +37,14 @@ func (f *ValueFileMetrics) AddTotalWritten(n int64) {
 	f.totalWritten.Add(float64(n))
 }
 
+func (f *ValueFileMetrics) SetTotalWritten(n int64) {
+	f.totalWritten.Set(float64(n))
+}
+
+func (f *ValueFileMetrics) SetFiles(n int64) {
+	f.files.Set(float64(n))
+}
+
 func (f *ValueFileMetrics) AddFiles(n int64) {
 	f.files.Add(float64(n))
 }

@@ -620,7 +620,6 @@ func (f *FileStore) Close() error {
 
 	f.lastFileStats = nil
 	f.files = nil
-	f.Metric.SetFiles(0)
 
 	// Let other methods access this closed object while we do the actual closing.
 	f.mu.Unlock()
