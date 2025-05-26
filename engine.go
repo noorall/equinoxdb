@@ -16,10 +16,10 @@
  * limitations under the License.
  */
 
-package web
+package main
 
-import "time"
+import "equinox/web"
 
-func formatTime(t time.Time) string {
-	return t.Format("2006-01-02 15:04:05")
+func main() {
+	web.Run()
 }

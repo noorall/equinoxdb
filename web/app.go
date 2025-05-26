@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package main
+package web
 
 import (
 	"context"
@@ -73,7 +73,7 @@ func loadTemplates() *template.Template {
 var username, password string
 var cancels sync.Map
 
-func main() {
+func Run() {
 	var port string
 	var logging bool
 	flag.StringVar(&port, "port", "9898", "指定服务监听的端口")
