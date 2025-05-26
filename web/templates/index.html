@@ -70,9 +70,9 @@
             </td>
             <td class="p-3 space-x-2">
                 {{if eq .Type 0}}
-                <a id="view-task-link-{{.ID}}" href="http://localhost:3000/public-dashboards/924c2fa3b8ae457095656e9db4e70c53?&refresh=auto&from={{.CreatedAt | unixMilli}}{{if .Finished }}&to={{.FinishedAt | unixMilli}}{{end}}" target="_blank" class="text-blue-600 hover:underline">查看</a>
+                <a id="view-task-link-{{.ID}}" href="http://localhost:3000/public-dashboards/924c2fa3b8ae457095656e9db4e70c53?refresh=auto&from={{.CreatedAt | unixMilli}}{{if .Finished }}&to={{.FinishedAt | unixMilli}}{{end}}" target="_blank" class="text-blue-600 hover:underline">查看</a>
                 {{else}}
-                <a id="view-task-link-{{.ID}}" href="http://localhost:3000/public-dashboards/856b5d408bf9459195507fdbe54d12d0?&refresh=auto&from={{.CreatedAt | unixMilli}}{{if .Finished }}&to={{.FinishedAt | unixMilli}}{{end}}" target="_blank" class="text-blue-600 hover:underline">查看</a>
+                <a id="view-task-link-{{.ID}}" href="http://localhost:3000/public-dashboards/2ad7bfa2405a4bba8be721752fbddbb3?refresh=auto&from={{.CreatedAt | unixMilli}}{{if .Finished }}&to={{.FinishedAt | unixMilli}}{{end}}" target="_blank" class="text-blue-600 hover:underline">查看</a>
                 {{end}}
                 {{if .Finished}}
                 <button id="stop-task-btn-{{.ID}}" class="text-gray-400 cursor-not-allowed" disabled>终止</button>
