@@ -107,9 +107,9 @@ func parseSelect(sql string) (*ParsedSelect, error) {
 			return nil, fmt.Errorf("failed to parse time value: %v", err)
 		}
 		if matches[3] == ">" {
-			start = timeValue
+			start = timeValue + 1
 		} else if matches[3] == "<" {
-			end = timeValue
+			end = timeValue - 1
 		}
 
 		// 第二个时间条件（如果存在）
@@ -119,9 +119,9 @@ func parseSelect(sql string) (*ParsedSelect, error) {
 				return nil, fmt.Errorf("failed to parse time value:: %v", err)
 			}
 			if matches[5] == ">" {
-				start = timeValue2
+				start = timeValue2 + 1
 			} else if matches[5] == "<" {
-				end = timeValue2
+				end = timeValue2 - 1
 			}
 		}
 	}
@@ -195,9 +195,9 @@ func parseDelete(sql string) (*ParsedDelete, error) {
 			return nil, fmt.Errorf("failed to parse time value:: %v", err)
 		}
 		if matches[2] == ">" {
-			start = timeValue
+			start = timeValue + 1
 		} else if matches[2] == "<" {
-			end = timeValue
+			end = timeValue - 1
 		}
 
 		// 第二个时间条件（如果存在）
@@ -207,9 +207,9 @@ func parseDelete(sql string) (*ParsedDelete, error) {
 				return nil, fmt.Errorf("failed to parse time value:: %v", err)
 			}
 			if matches[4] == ">" {
-				start = timeValue2
+				start = timeValue2 + 1
 			} else if matches[4] == "<" {
-				end = timeValue2
+				end = timeValue2 - 1
 			}
 		}
 	}
